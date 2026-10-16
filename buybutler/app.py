@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -299,21 +299,45 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         with db.session(settings.database) as conn:
             yield conn
 
-    Conn = Annotated[sqlite3.Connection, Depends(conn_dep)]
-
-    def user_dep(request: Request, conn: Conn) -> auth.User:
-        token = request.cookies.get(COOKIE)
-        user = auth.session_user(conn, token, settings.session_days) if token else None
-        if user is None:
-            raise HTTPException(401, "not logged in")
-        return user
-
-    CurrentUser = Annotated[auth.User, Depends(user_dep)]
+    # scope="function": the transaction is committed before the response
+    # goes out. With the default request scope the commit runs after it, and
+    # the browser's next request could miss a record it was told exists.
+    Conn = Annotated[sqlite3.Connection, Depends(conn_dep, scope="function")]
 
     def secure(request: Request) -> bool:
         # Behind the reverse proxy, uvicorn takes the scheme from
         # X-Forwarded-Proto; a plain-HTTP test on the LAN still gets a cookie.
         return request.url.scheme == "https"
+
+    def set_session_cookie(request: Request, response: Response, token: str) -> None:
+        response.set_cookie(
+            COOKIE,
+            token,
+            max_age=settings.session_days * 86400,
+            httponly=True,
+            samesite="lax",
+            secure=secure(request),
+            path="/",
+        )
+
+    def session_of(request: Request, conn: sqlite3.Connection, response: Response | None = None) -> auth.User:
+        token = request.cookies.get(COOKIE)
+        user, extended = auth.session_user(conn, token, settings.session_days) if token else (None, False)
+        if user is None:
+            raise HTTPException(401, "not logged in")
+        # The server extends a session while it is used; the cookie has to
+        # move along, or the browser drops it session_days after the login.
+        if extended and response is not None:
+            set_session_cookie(request, response, token)
+        return user
+
+    def user_dep(request: Request, response: Response, conn: Conn) -> auth.User:
+        return session_of(request, conn, response)
+
+    CurrentUser = Annotated[auth.User, Depends(user_dep)]
+
+    def client_of(request: Request) -> str:
+        return request.client.host if request.client else "unknown"
 
     # ---- health and session ------------------------------------------------
 
@@ -324,27 +348,17 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.post("/api/session")
     def login(body: Login, request: Request, response: Response, conn: Conn) -> dict:
-        client = request.client.host if request.client else "unknown"
-        wait = throttle.retry_after(client)
-        if wait:
+        client = client_of(request)
+        wait, attempt = throttle.begin(body.username, client)
+        if attempt is None:
             log.warning("login_throttled", extra={"client": client})
             raise HTTPException(429, "too many failed logins, try again later", headers={"Retry-After": str(wait)})
         user = auth.authenticate(conn, body.username, body.password)
         if user is None:
-            throttle.failed(client)
             log.warning("login_failed", extra={"client": client})
             raise HTTPException(401, "wrong user name or password")
-        throttle.succeeded(client)
-        token = auth.start_session(conn, user.id, settings.session_days)
-        response.set_cookie(
-            COOKIE,
-            token,
-            max_age=settings.session_days * 86400,
-            httponly=True,
-            samesite="lax",
-            secure=secure(request),
-            path="/",
-        )
+        throttle.succeeded(body.username, client, attempt)
+        set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
         log.info("login_succeeded", extra={"user_id": user.id, "client": client})
         return {"username": user.username, "role": user.role}
 
@@ -362,16 +376,22 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     @app.post("/api/session/password", status_code=204)
     def change_password(body: PasswordChange, user: CurrentUser, request: Request, response: Response,
                         conn: Conn) -> None:
+        # The same limit as the login: a session alone must not allow
+        # guessing the password.
+        client = client_of(request)
+        wait, attempt = throttle.begin(user.username, client)
+        if attempt is None:
+            raise HTTPException(429, "too many wrong passwords, try again later", headers={"Retry-After": str(wait)})
         if auth.authenticate(conn, user.username, body.current) is None:
+            log.warning("password_change_refused", extra={"user_id": user.id})
             raise HTTPException(400, "the current password is wrong")
+        throttle.succeeded(user.username, client, attempt)
         try:
             auth.set_password(conn, user.id, body.new)
         except auth.AuthError as exc:
             raise HTTPException(400, str(exc)) from None
         # Every session ended with the change; this one continues with a new token.
-        token = auth.start_session(conn, user.id, settings.session_days)
-        response.set_cookie(COOKIE, token, max_age=settings.session_days * 86400, httponly=True,
-                            samesite="lax", secure=secure(request), path="/")
+        set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
         log.info("password_changed", extra={"user_id": user.id})
 
     # ---- lookup ------------------------------------------------------------
@@ -472,32 +492,55 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         ]
         return {"stores": stores, "categories": categories}
 
+    def attach_suggested_image(product_id: int, url: str) -> None:
+        """Download the Open Food Facts picture after the product was saved.
+
+        Its image server can take ten seconds or more; in the shop, saving
+        must not wait for that. A picture the user set meanwhile wins.
+        """
+        data = lookup_client.fetch_image(url)
+        if not data:
+            return
+        try:
+            name = images.save(settings.images, "products", data)
+        except images.ImageError:
+            log.warning("image_rejected", extra={"product_id": product_id})
+            return
+        with db.session(settings.database) as conn:
+            row = conn.execute("SELECT image FROM products WHERE id = ?", (product_id,)).fetchone()
+            if row is not None and row["image"] is None:
+                conn.execute(
+                    "UPDATE products SET image = ?, updated_at = ? WHERE id = ?", (name, db.now(), product_id)
+                )
+                log.info("product_image_downloaded", extra={"product_id": product_id, "bytes": len(data)})
+                return
+        images.delete(settings.images, "products", name)
+
     @app.post("/api/products", status_code=201)
-    def create_product(body: ProductIn, user: CurrentUser, conn: Conn) -> dict:
+    def create_product(body: ProductIn, user: CurrentUser, conn: Conn, tasks: BackgroundTasks) -> dict:
         if body.barcode and conn.execute(
             "SELECT 1 FROM products WHERE household_id = ? AND barcode = ?", (user.household_id, body.barcode)
         ).fetchone():
             raise HTTPException(409, "a product with this barcode exists already")
-        image = None
+        image_url = None
         source = "manual"
-        if body.use_suggested_image and body.barcode:
+        # The switch also covers suggestions cached before it was turned off.
+        if body.use_suggested_image and body.barcode and settings.off_lookup:
             suggestion = lookup_client.cached_suggestion(conn, body.barcode)
             if suggestion is not None:
                 source = "openfoodfacts"
-                data = lookup_client.fetch_image(suggestion.image_url) if suggestion.image_url else None
-                if data:
-                    try:
-                        image = images.save(settings.images, "products", data)
-                    except images.ImageError:
-                        image = None
+                image_url = suggestion.image_url or None
         stamp = db.now()
         product_id = conn.execute(
             "INSERT INTO products (household_id, barcode, name, brand, category, quantity, image, source,"
             " created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user.household_id, body.barcode, body.name, body.brand, body.category, body.quantity, image,
+            (user.household_id, body.barcode, body.name, body.brand, body.category, body.quantity, None,
              source, user.id, stamp, stamp),
         ).lastrowid
         log.info("product_created", extra={"product_id": product_id, "source": source})
+        if image_url:
+            # Runs after the response, and after this request's commit.
+            tasks.add_task(attach_suggested_image, product_id, image_url)
         return _product_json(conn, _load_product(conn, user, product_id))
 
     @app.get("/api/products/{product_id}")
@@ -564,10 +607,10 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         # Checked before the upload is read, so nobody without a session can
         # make the server buffer a picture.
         with db.session(settings.database) as conn:
-            _load_product(conn, user_dep(request, conn), product_id)
+            _load_product(conn, session_of(request, conn), product_id)
         data = await read_picture(request)
         with db.session(settings.database) as conn:
-            user = user_dep(request, conn)
+            user = session_of(request, conn)
             row = _load_product(conn, user, product_id)
             name = images.save(settings.images, "products", data)
             conn.execute("UPDATE products SET image = ?, updated_at = ? WHERE id = ?", (name, db.now(), product_id))
@@ -633,10 +676,10 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     @app.put("/api/ratings/{rating_id}/photo")
     async def put_rating_photo(rating_id: int, request: Request) -> dict:
         with db.session(settings.database) as conn:
-            _load_rating(conn, user_dep(request, conn), rating_id)
+            _load_rating(conn, session_of(request, conn), rating_id)
         data = await read_picture(request)
         with db.session(settings.database) as conn:
-            user = user_dep(request, conn)
+            user = session_of(request, conn)
             row = _load_rating(conn, user, rating_id)
             name = images.save(settings.images, "ratings", data)
             conn.execute("UPDATE ratings SET photo = ?, updated_at = ? WHERE id = ?", (name, db.now(), rating_id))

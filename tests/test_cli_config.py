@@ -86,3 +86,50 @@ def test_defaults(monkeypatch):
     s = config.load()
     assert s.port == 8080 and s.off_lookup is True and s.off_language == "en"
     assert str(s.database) == "/config/buybutler.sqlite3"
+
+
+# ---- login throttle --------------------------------------------------------
+
+
+def test_throttle_holds_when_the_client_address_changes():
+    t = auth.LoginThrottle()
+    for n in range(5):
+        wait, attempt = t.begin("tj", f"203.0.113.{n}")
+        assert wait == 0 and attempt is not None
+    wait, attempt = t.begin("TJ ", "203.0.113.99")
+    assert attempt is None and wait > 0
+
+
+def test_throttle_counts_attempts_before_the_check():
+    # Parallel requests each reserve an attempt, so the sixth is refused
+    # even when none of the first five has finished yet.
+    t = auth.LoginThrottle()
+    attempts = [t.begin("tj", "198.51.100.1")[1] for _ in range(5)]
+    assert all(a is not None for a in attempts)
+    assert t.begin("tj", "198.51.100.1")[1] is None
+
+
+def test_throttle_success_takes_back_only_its_attempt():
+    t = auth.LoginThrottle()
+    for _ in range(4):
+        t.begin("tj", "198.51.100.1")
+    _, ok = t.begin("tj", "198.51.100.1")
+    t.succeeded("tj", "198.51.100.1", ok)
+    _, fifth = t.begin("tj", "198.51.100.1")
+    assert fifth is not None
+    assert t.begin("tj", "198.51.100.1")[1] is None
+
+
+def test_throttle_per_client_limit():
+    t = auth.LoginThrottle(per_client=3)
+    for n in range(3):
+        assert t.begin(f"user{n}", "198.51.100.1")[1] is not None
+    assert t.begin("user9", "198.51.100.1")[1] is None
+
+
+def test_throttle_memory_is_bounded(monkeypatch):
+    t = auth.LoginThrottle()
+    monkeypatch.setattr(auth.LoginThrottle, "MAX_KEYS", 100)
+    for n in range(1000):
+        t.begin(f"user{n}", f"client{n}")
+    assert len(t._attempts) <= 100

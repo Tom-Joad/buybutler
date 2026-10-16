@@ -129,6 +129,38 @@ def test_wrong_password_and_throttle(client):
     assert int(r.headers["retry-after"]) > 0
 
 
+def test_lockout_is_per_account(client, settings):
+    with db.session(settings.database) as conn:
+        auth.create_user(conn, "sam", PASSWORD)
+    for _ in range(4):
+        client.post("/api/session", json={"username": "tj", "password": "wrong password"}, headers=H)
+    # A correct login with another account must not reset the count for tj.
+    other = TestClient(client.app)
+    assert other.post("/api/session", json={"username": "sam", "password": PASSWORD}, headers=H).status_code == 200
+    client.post("/api/session", json={"username": "tj", "password": "wrong password"}, headers=H)
+    r = client.post("/api/session", json={"username": "TJ", "password": PASSWORD}, headers=H)
+    assert r.status_code == 429
+    # sam is not affected by tj's lockout.
+    assert other.post("/api/session", json={"username": "sam", "password": PASSWORD}, headers=H).status_code == 200
+
+
+def test_password_change_is_throttled(logged_in):
+    for _ in range(5):
+        r = logged_in.post("/api/session/password", json={"current": "wrong password", "new": "x" * 12}, headers=H)
+        assert r.status_code == 400
+    r = logged_in.post("/api/session/password", json={"current": PASSWORD, "new": "x" * 12}, headers=H)
+    assert r.status_code == 429
+
+
+def test_used_session_renews_the_cookie(logged_in, settings):
+    assert "set-cookie" not in logged_in.get("/api/session").headers
+    with db.session(settings.database) as conn:
+        conn.execute("UPDATE sessions SET last_seen_at = '2000-01-01T00:00:00.000Z'")
+    r = logged_in.get("/api/session")
+    assert r.status_code == 200
+    assert "buybutler_session=" in r.headers["set-cookie"] and "Max-Age=" in r.headers["set-cookie"]
+
+
 def test_unknown_user_is_like_wrong_password(client):
     r = client.post("/api/session", json={"username": "nobody", "password": PASSWORD}, headers=H)
     assert r.status_code == 401
@@ -359,9 +391,28 @@ def test_lookup_disabled(settings, monkeypatch, fake_off):
     assert fake_off.calls == []
 
 
+def test_lookup_switch_also_covers_cached_pictures(settings, monkeypatch, fake_off):
+    app = create_app(settings, transport=httpx.MockTransport(fake_off.handler))
+    with TestClient(app) as c:
+        with db.session(settings.database) as conn:
+            auth.create_user(conn, "tj", PASSWORD)
+        c.post("/api/session", json={"username": "tj", "password": PASSWORD}, headers=H)
+        c.get("/api/lookup", params={"barcode": "4000000000001"})
+    calls = len(fake_off.calls)
+    monkeypatch.setenv("BUYBUTLER_OFF_LOOKUP", "false")
+    app = create_app(config.load(), transport=httpx.MockTransport(fake_off.handler))
+    with TestClient(app) as c:
+        c.post("/api/session", json={"username": "tj", "password": PASSWORD}, headers=H)
+        p = make_product(c, barcode="4000000000001", name="x", use_suggested_image=True)
+    assert p["image"] is None and p["source"] == "manual"
+    assert len(fake_off.calls) == calls
+
+
 def test_create_from_suggestion_downloads_image(logged_in, fake_off):
     logged_in.get("/api/lookup", params={"barcode": "4000000000001"})
     p = make_product(logged_in, barcode="4000000000001", name="Naturjoghurt", use_suggested_image=True)
+    # Downloaded in the background after the response.
+    p = logged_in.get(f"/api/products/{p['id']}").json()
     assert p["source"] == "openfoodfacts" and p["image"].startswith("/images/products/")
     assert fake_off.calls[-1].startswith("https://images.openfoodfacts.org/")
     assert logged_in.get(p["image"]).content == JPEG

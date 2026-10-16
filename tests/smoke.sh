@@ -146,6 +146,18 @@ R=$(http POST /api/session "{\"username\":\"smoke\",\"password\":\"$PASSWORD\"}"
 R=$(http GET /api/products/1)
 grep -q 'Too dry' <<<"$R" || fail "rating lost after re-create"
 
+echo "== a changed PUID takes the files over"
+docker rm -f "$NAME" >/dev/null
+OLD_PUID=$PUID
+PUID=$((OLD_PUID + 1))
+start
+[[ $(stat -c %u "$WORK/config/buybutler.sqlite3") == "$PUID" ]] || fail "database not handed to the new PUID"
+[[ -z $(find "$WORK/config" ! -user "$PUID" -print -quit) ]] || fail "files still owned by the old PUID"
+R=$(http POST /api/session "{\"username\":\"smoke\",\"password\":\"$PASSWORD\"}")
+[[ $(status_of "$R") == 200 ]] || fail "login failed after the PUID change"
+R=$(http POST /api/products '{"name":"After the PUID change"}')
+[[ $(status_of "$R") == 201 ]] || fail "no write after the PUID change: $R"
+
 echo "== ordered stop"
 docker stop -t 20 "$NAME" >/dev/null
 [[ $(docker inspect -f '{{.State.ExitCode}}' "$NAME") == 0 ]] || fail "exit code not 0"

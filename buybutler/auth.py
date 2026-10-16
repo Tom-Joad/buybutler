@@ -168,61 +168,103 @@ def end_session(conn: sqlite3.Connection, token: str) -> None:
     conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_token_hash(token),))
 
 
-def session_user(conn: sqlite3.Connection, token: str, days: int) -> User | None:
-    """The user a session token belongs to; extends the session while it is used."""
+def session_user(conn: sqlite3.Connection, token: str, days: int) -> tuple[User | None, bool]:
+    """The user a session token belongs to, and whether the session was just
+    extended (the caller then renews the cookie, so both expire together)."""
     row = conn.execute(
         "SELECT u.id, u.household_id, u.username, u.role, s.last_seen_at, s.expires_at"
         " FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
         (_token_hash(token),),
     ).fetchone()
     if row is None:
-        return None
+        return None, False
     current = datetime.now(timezone.utc)
     if row["expires_at"] < _iso(current):
         end_session(conn, token)
-        return None
+        return None, False
+    user = User(row["id"], row["household_id"], row["username"], row["role"])
     # A sliding expiry, written at most once an hour to keep reads cheap.
     if row["last_seen_at"] < _iso(current - timedelta(hours=1)):
         conn.execute(
             "UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?",
             (_iso(current), _iso(current + timedelta(days=days)), _token_hash(token)),
         )
-    return User(row["id"], row["household_id"], row["username"], row["role"])
+        return user, True
+    return user, False
 
 
 class LoginThrottle:
-    """Slows down password guessing: a client address that fails too often
-    is locked out for a while. Kept in memory; a restart clears it."""
+    """Limits password guesses per account and per client address.
 
-    def __init__(self, attempts: int = 5, window: float = 900.0) -> None:
-        self.attempts = attempts
+    The account limit is what holds: the client address can be forged
+    through X-Forwarded-For, the user name being guessed can't be changed.
+    The price is that someone can lock an account for a while by guessing
+    wrong on purpose. Every attempt is counted before the password is
+    checked, so parallel requests can't all slip under the limit; a
+    successful one is taken back. Kept in memory; a restart clears it.
+    """
+
+    MAX_KEYS = 10_000
+
+    def __init__(self, per_account: int = 5, per_client: int = 20, window: float = 900.0) -> None:
+        self.per_account = per_account
+        self.per_client = per_client
         self.window = window
-        self._failures: dict[str, list[float]] = {}
+        self._attempts: dict[str, list[float]] = {}
+        self._swept = 0.0
         self._lock = threading.Lock()
 
+    def _keys(self, username: str, client: str) -> list[tuple[str, int]]:
+        return [
+            ("user:" + username.strip().casefold(), self.per_account),
+            ("client:" + client, self.per_client),
+        ]
+
     def _recent(self, key: str, moment: float) -> list[float]:
-        recent = [t for t in self._failures.get(key, []) if moment - t < self.window]
+        recent = [t for t in self._attempts.get(key, []) if moment - t < self.window]
         if recent:
-            self._failures[key] = recent
+            self._attempts[key] = recent
         else:
-            self._failures.pop(key, None)
+            self._attempts.pop(key, None)
         return recent
 
-    def retry_after(self, key: str) -> int:
-        """Seconds until the address may try again; 0 when it may now."""
-        with self._lock:
-            moment = time.monotonic()
-            recent = self._recent(key, moment)
-            if len(recent) < self.attempts:
-                return 0
-            return max(1, int(self.window - (moment - recent[0])))
-
-    def failed(self, key: str) -> None:
-        with self._lock:
-            moment = time.monotonic()
+    def _sweep(self, moment: float) -> None:
+        """Drop keys that were never seen again, so rotating addresses can't
+        fill the memory."""
+        if moment - self._swept < 60 and len(self._attempts) < self.MAX_KEYS:
+            return
+        self._swept = moment
+        for key in list(self._attempts):
             self._recent(key, moment)
-            self._failures.setdefault(key, []).append(moment)
+        if len(self._attempts) >= self.MAX_KEYS:
+            newest_first = sorted(self._attempts, key=lambda k: self._attempts[k][-1], reverse=True)
+            for key in newest_first[self.MAX_KEYS // 2 :]:
+                del self._attempts[key]
 
-    def succeeded(self, key: str) -> None:
+    def begin(self, username: str, client: str) -> tuple[int, float | None]:
+        """Count an attempt. Returns (seconds to wait, None) when it is refused,
+        or (0, token) when it may go ahead; pass the token to succeeded()."""
         with self._lock:
-            self._failures.pop(key, None)
+            moment = time.monotonic()
+            self._sweep(moment)
+            keys = self._keys(username, client)
+            wait = 0
+            for key, limit in keys:
+                recent = self._recent(key, moment)
+                if len(recent) >= limit:
+                    wait = max(wait, max(1, int(self.window - (moment - recent[-limit]))))
+            if wait:
+                return wait, None
+            for key, _ in keys:
+                self._attempts.setdefault(key, []).append(moment)
+            return 0, moment
+
+    def succeeded(self, username: str, client: str, token: float) -> None:
+        """Take back the attempt of a correct password."""
+        with self._lock:
+            for key, _ in self._keys(username, client):
+                entries = self._attempts.get(key)
+                if entries and token in entries:
+                    entries.remove(token)
+                    if not entries:
+                        del self._attempts[key]

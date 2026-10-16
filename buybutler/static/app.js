@@ -426,11 +426,13 @@ async function showProductForm(id, barcode) {
     $("#pf-cancel").href = `#/product/${id}`;
     for (const k of ["name", "brand", "category", "quantity", "barcode"]) form[k].value = p[k] || "";
     form.dataset.id = id;
+    delete form.dataset.created;
     return;
   }
 
   show("view-product-form", "scan");
   delete form.dataset.id;
+  delete form.dataset.created;
   $("#pf-title").textContent = "New product";
   $("#pf-submit").textContent = "Save and rate";
   $("#pf-cancel").href = "#/scan";
@@ -470,6 +472,10 @@ $("#product-form").addEventListener("submit", async (ev) => {
       body.use_suggested_image = !$("#pf-image-choice").hidden && form.use_suggested_image.checked;
       showInfo(msg, "Saving");
       p = await api("POST", "/api/products", body);
+      // From here on the form edits the new product, so a failed picture
+      // upload followed by another Save doesn't create it twice.
+      form.dataset.id = p.id;
+      form.dataset.created = "1";
     }
     const file = form.image.files[0];
     if (file) {
@@ -477,7 +483,7 @@ $("#product-form").addEventListener("submit", async (ev) => {
       p = await api("PUT", `/api/products/${p.id}/image`, await shrink(file));
     }
     state.suggestion = null;
-    go(form.dataset.id ? `#/product/${p.id}` : `#/product/${p.id}/rate`);
+    go(form.dataset.created ? `#/product/${p.id}/rate` : `#/product/${p.id}`);
   } catch (err) {
     showError(msg, err);
   }
@@ -567,6 +573,9 @@ $("#rate-form").addEventListener("submit", async (ev) => {
       r = await api("PATCH", `/api/ratings/${form.dataset.rating}`, body);
     } else {
       r = await api("POST", `/api/products/${form.dataset.product}/ratings`, body);
+      // A failed photo upload followed by another Save edits this rating
+      // instead of adding a second one.
+      form.dataset.rating = r.id;
     }
     const file = form.photo.files[0];
     if (file) {

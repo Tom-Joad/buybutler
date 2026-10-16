@@ -171,7 +171,8 @@ class Client:
         if not _image_url_allowed(url):
             return None
         try:
-            with self._http.stream("GET", url) as response:
+            # Its image server is often slow; this runs in the background.
+            with self._http.stream("GET", url, timeout=httpx.Timeout(30.0, connect=15.0)) as response:
                 if response.status_code != 200:
                     return None
                 data = bytearray()

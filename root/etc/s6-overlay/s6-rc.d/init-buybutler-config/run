@@ -36,9 +36,11 @@ mkdir -p /config/images /config/backups
 
 if [[ -z ${LSIO_NON_ROOT_USER} ]]; then
     lsiown abc:abc /config /config/images /config/backups
-    # Files written as root (an earlier `docker exec` without the wrapper, a
-    # copied database) are handed over once; normally there are none.
-    if [[ -n $(find /config -maxdepth 3 -user 0 -print -quit) ]]; then
+    # Anything not owned by abc is handed over: files written as root (a
+    # `docker exec` without the wrapper), or by an earlier PUID/PGID after
+    # the IDs were changed or /config was restored elsewhere. Normally there
+    # is nothing, and the walk stops at the first hit.
+    if [[ -n $(find /config \( ! -user abc -o ! -group abc \) -print -quit) ]]; then
         lsiown -R abc:abc /config
     fi
 fi

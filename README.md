@@ -100,7 +100,7 @@ except scanning; type the barcode instead.
 | `-e BUYBUTLER_OFF_LOOKUP` | `true` | `false` never sends barcodes to Open Food Facts; products are entered by hand |
 | `-e BUYBUTLER_SESSION_DAYS` | `90` | Days a login stays valid without being used (1 to 3650) |
 | `-e BUYBUTLER_MAX_UPLOAD_MB` | `10` | Largest accepted picture (1 to 100); the browser shrinks photos before sending |
-| `-e BUYBUTLER_TRUSTED_PROXIES` | `*` | Addresses whose `X-Forwarded-*` headers are trusted; set it to the reverse proxy's address if the port is reachable by others |
+| `-e BUYBUTLER_TRUSTED_PROXIES` | `*` | Addresses whose `X-Forwarded-*` headers are trusted. Set it to the reverse proxy's address (comma-separated list); with `*`, the client address in the log and the per-address login limit can be forged, see [Security](#security) |
 | `-e BUYBUTLER_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 | `-e BUYBUTLER_PORT` | `8080` | Port inside the container |
 | `-v /config` | -- | Database, pictures, backups |
@@ -154,7 +154,12 @@ from `/config/backups/`. Delete old backups yourself; Buybutler doesn't.
 - Log in with user name and password. Passwords are stored as scrypt hashes,
   login sessions as SHA-256 of a random token; the cookie is `HttpOnly`,
   `SameSite=Lax` and `Secure` behind HTTPS.
-- Five failed logins from one address lock it out for 15 minutes.
+- Five failed logins for one account lock that account for 15 minutes, from
+  any address; 20 failures from one client address lock that address. The
+  account limit holds even when the client address is forged. Someone who
+  knows a user name can therefore lock that account for 15 minutes on
+  purpose; a restart of the container lifts every lock. Changing the
+  password in the interface counts towards the same limit.
 - Every change needs a request header that other sites can't set (no
   cross-site requests); a strict Content Security Policy blocks scripts from
   elsewhere.
@@ -178,7 +183,7 @@ check calls `http://127.0.0.1:8080/health`.
 | "Camera needs HTTPS" | The page was opened over plain HTTP; use the reverse proxy's HTTPS address |
 | "No camera access" | The browser or phone denied the camera; allow it in the site settings |
 | Logged out after a password change | Intended: a new password ends every other session |
-| "Too many failed logins" | Wait 15 minutes, or restart the container |
+| "Too many failed logins" | Wait 15 minutes, or restart the container (also when someone else guessed wrong for your account) |
 | Wrong client address in the log | `BUYBUTLER_TRUSTED_PROXIES` doesn't include the reverse proxy |
 
 Verify the signature:
