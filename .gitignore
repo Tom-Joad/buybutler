@@ -1,0 +1,26 @@
+# Local settings
+.env
+.env.*
+!.env.example
+
+# Local data: the database holds personal ratings and photos
+config/
+*.sqlite3
+*.sqlite3-*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node: only used to fetch the barcode decoder at build time
+node_modules/
+buybutler/static/vendor/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

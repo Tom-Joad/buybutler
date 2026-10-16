@@ -1,0 +1,4 @@
+# Keep LF everywhere: the Dockerfile and shell scripts break with CRLF.
+* text=auto eol=lf
+*.png binary
+*.woff2 binary
