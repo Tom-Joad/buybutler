@@ -15,11 +15,14 @@ choose **Report a vulnerability**. You will get an answer within a few days.
 ## Scope notes
 
 Buybutler holds personal data: what a household buys and thinks of it,
-photos, the stores it visits and when, and the users' password hashes. Of
-particular interest:
+photos, the stores it visits and when, the users' password hashes and
+their second factors (authenticator secrets, passkey public keys, hashed
+recovery codes). Of particular interest:
 
 - getting at data without a valid session, or at another household's data
 - session tokens or passwords ending up in logs, files or responses
+- getting past the second factor: a code accepted twice, a passkey of
+  another user or another site, a login ticket used for something else
 - cross-site requests that change data, or script injection through
   product names, reasons or pictures
 - uploads that are stored or served as something other than a picture

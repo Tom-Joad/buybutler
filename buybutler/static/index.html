@@ -55,6 +55,20 @@
       </label>
       <p class="message" id="login-message" role="alert"></p>
       <button class="btn btn--primary" type="submit">Log in</button>
+      <button class="btn btn--secondary" id="passkey-login" type="button" hidden>Log in with a passkey</button>
+    </form>
+    <!-- Second step of a login with two-factor login turned on. -->
+    <form id="second-form" class="stack" autocomplete="off" hidden>
+      <h2 class="section-title">Second step</h2>
+      <p class="meta" id="second-hint"></p>
+      <label class="field" id="second-code-field">
+        <span class="label">Code</span>
+        <input name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required>
+      </label>
+      <p class="message" id="second-message" role="alert"></p>
+      <button class="btn btn--primary" type="submit">Continue</button>
+      <button class="btn btn--secondary" id="second-passkey" type="button" hidden>Use a passkey</button>
+      <button class="btn btn--outline" id="second-cancel" type="button">Start again</button>
     </form>
   </section>
 
@@ -363,6 +377,43 @@
       <p class="message" id="a-message" role="alert"></p>
       <button class="btn btn--secondary" type="submit">Change password</button>
     </form>
+    <div id="tf-section" class="stack">
+      <h2 class="section-title">Two-factor login</h2>
+      <p class="meta" id="tf-status"></p>
+      <label class="field">
+        <span class="label">Current password, needed for changes here</span>
+        <input id="tf-password" type="password" autocomplete="current-password">
+      </label>
+      <button class="btn btn--secondary" id="tf-totp-start" type="button" hidden>Set up an authenticator app</button>
+      <div id="tf-totp-setup" class="stack" hidden>
+        <p class="meta">Scan the code with the authenticator app, or type in the key by hand. Then enter the 6-digit code the app shows.</p>
+        <img class="qr" id="tf-qr" alt="QR code for the authenticator app" hidden>
+        <p class="secret" id="tf-secret"></p>
+        <label class="field">
+          <span class="label">6-digit code</span>
+          <input id="tf-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+        </label>
+        <button class="btn btn--secondary" id="tf-totp-confirm" type="button">Confirm</button>
+      </div>
+      <button class="btn btn--outline" id="tf-totp-remove" type="button" hidden>Remove the authenticator app</button>
+      <h3 class="label">Passkeys</h3>
+      <ul class="history" id="tf-passkeys"></ul>
+      <p class="meta" id="tf-passkey-note" hidden></p>
+      <div class="stack" id="tf-passkey-add-row" hidden>
+        <label class="field">
+          <span class="label">Name of the new passkey</span>
+          <input id="tf-passkey-name" maxlength="60" placeholder="Phone">
+        </label>
+        <button class="btn btn--secondary" id="tf-passkey-add" type="button">Add a passkey</button>
+      </div>
+      <div class="stack" id="tf-codes" hidden>
+        <p class="meta">Recovery codes: each one logs in once without the second factor, for example when the phone is lost. Write them down or keep them in a password manager now; they are not shown again.</p>
+        <ol class="codes" id="tf-code-list"></ol>
+        <button class="btn btn--outline" id="tf-codes-copy" type="button">Copy the codes</button>
+      </div>
+      <button class="btn btn--outline" id="tf-codes-new" type="button" hidden>New recovery codes</button>
+      <p class="message" id="tf-message" role="alert"></p>
+    </div>
     <div id="a-users-section" hidden>
       <h2 class="section-title">Users</h2>
       <ul class="history" id="a-users"></ul>

@@ -220,11 +220,12 @@ class LoginThrottle:
         self._swept = 0.0
         self._lock = threading.Lock()
 
-    def _keys(self, username: str, client: str) -> list[tuple[str, int]]:
-        return [
-            ("user:" + username.strip().casefold(), self.per_account),
-            ("client:" + client, self.per_client),
-        ]
+    def _keys(self, username: str | None, client: str) -> list[tuple[str, int]]:
+        # None: the account isn't known yet (a passkey login without a name).
+        keys = [("client:" + client, self.per_client)]
+        if username is not None:
+            keys.insert(0, ("user:" + username.strip().casefold(), self.per_account))
+        return keys
 
     def _recent(self, key: str, moment: float) -> list[float]:
         recent = [t for t in self._attempts.get(key, []) if moment - t < self.window]
@@ -247,7 +248,7 @@ class LoginThrottle:
             for key in newest_first[self.MAX_KEYS // 2 :]:
                 del self._attempts[key]
 
-    def begin(self, username: str, client: str) -> tuple[int, float | None]:
+    def begin(self, username: str | None, client: str) -> tuple[int, float | None]:
         """Count an attempt. Returns (seconds to wait, None) when it is refused,
         or (0, token) when it may go ahead; pass the token to succeeded()."""
         with self._lock:
@@ -265,7 +266,7 @@ class LoginThrottle:
                 self._attempts.setdefault(key, []).append(moment)
             return 0, moment
 
-    def succeeded(self, username: str, client: str, token: float) -> None:
+    def succeeded(self, username: str | None, client: str, token: float) -> None:
         """Take back the attempt of a correct password."""
         with self._lock:
             for key, _ in self._keys(username, client):

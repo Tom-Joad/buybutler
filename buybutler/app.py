@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import __version__, auth, config, db, images, lists, off, prices
+from . import __version__, auth, config, db, images, lists, off, prices, twofactor
 
 log = logging.getLogger("buybutler")
 
@@ -35,7 +35,10 @@ SECURITY_HEADERS = {
     ),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
-    "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+    "Permissions-Policy": (
+        "camera=(self), microphone=(), geolocation=(), "
+        "publickey-credentials-create=(self), publickey-credentials-get=(self)"
+    ),
     "Cross-Origin-Opener-Policy": "same-origin",
 }
 
@@ -107,6 +110,46 @@ class PasswordSet(BaseModel):
 class PasswordChange(BaseModel):
     current: str = Field(max_length=1024)
     new: str = Field(max_length=1024)
+
+
+# A ticket names a login or passkey registration in progress (see
+# twofactor.new_challenge).
+Ticket = Annotated[str, Field(min_length=20, max_length=100)]
+
+
+class SecondFactor(BaseModel):
+    ticket: Ticket
+    # A 6-digit code from the authenticator app, or a recovery code.
+    code: str = Field(max_length=40)
+
+
+class PasskeyStart(BaseModel):
+    # The ticket of a password login waiting for its second factor; without
+    # one, any passkey of this site can log in.
+    ticket: Ticket | None = None
+
+
+class PasskeyAnswer(BaseModel):
+    ticket: Ticket
+    # The browser's PublicKeyCredential as JSON; py_webauthn checks it.
+    credential: dict
+
+
+class PasswordConfirm(BaseModel):
+    password: str = Field(max_length=1024)
+
+
+class TotpConfirm(BaseModel):
+    code: str = Field(max_length=20)
+
+
+class PasskeyIn(PasskeyAnswer):
+    name: str = "Passkey"
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        return _text(v, twofactor.PASSKEY_NAME_MAX) or "Passkey"
 
 
 class ProductIn(BaseModel):
@@ -559,9 +602,108 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             log.warning("login_failed", extra={"client": client})
             raise HTTPException(401, "wrong user name or password")
         throttle.succeeded(body.username, client, attempt)
+        if twofactor.enabled(conn, user.id):
+            # The password was right; the session comes after the second factor.
+            ticket = new_ticket(conn, "second_factor", user.id)
+            log.info("login_needs_second_factor", extra={"user_id": user.id, "client": client})
+            return {"second_factor": {
+                "ticket": ticket, "methods": twofactor.methods(conn, user.id, bool(settings.public_url)),
+            }}
+        return log_in(request, response, conn, user, "password")
+
+    def log_in(request: Request, response: Response, conn: sqlite3.Connection, user: auth.User,
+               method: str) -> dict:
         set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
-        log.info("login_succeeded", extra={"user_id": user.id, "client": client})
-        return {"username": user.username, "role": user.role, "currency": settings.currency}
+        log.info("login_succeeded", extra={"user_id": user.id, "client": client_of(request), "method": method})
+        return me(user)
+
+    def new_ticket(conn: sqlite3.Connection, purpose: str, user_id: int | None, challenge: bytes = b"") -> str:
+        try:
+            return twofactor.new_challenge(conn, purpose, user_id, challenge)
+        except twofactor.TooManyChallenges:
+            log.warning("too_many_challenges")
+            raise HTTPException(429, "too many logins at the same time, try again later",
+                                headers={"Retry-After": "60"}) from None
+
+    def user_by_id(conn: sqlite3.Connection, user_id: int) -> auth.User | None:
+        row = conn.execute("SELECT id, username, role FROM users WHERE id = ?", (user_id,)).fetchone()
+        return auth.User(row["id"], row["username"], row["role"]) if row else None
+
+    @app.post("/api/session/second-factor")
+    def second_factor(body: SecondFactor, request: Request, response: Response, conn: Conn) -> dict:
+        ticket = twofactor.get_challenge(conn, body.ticket, "second_factor")
+        user = user_by_id(conn, ticket["user_id"]) if ticket else None
+        if user is None:
+            raise HTTPException(401, "the login took too long, start again")
+        # The same limit as the password: 5 wrong codes lock the account for a while.
+        client = client_of(request)
+        wait, attempt = throttle.begin(user.username, client)
+        if attempt is None:
+            log.warning("login_throttled", extra={"client": client})
+            raise HTTPException(429, "too many wrong codes, try again later", headers={"Retry-After": str(wait)})
+        code = body.code.strip()
+        if code.isdigit():
+            method, accepted = "totp", twofactor.check_totp(conn, user.id, code)
+        else:
+            method, accepted = "recovery_code", twofactor.use_recovery_code(conn, user.id, code)
+        if not accepted:
+            log.warning("second_factor_failed", extra={"user_id": user.id, "client": client, "method": method})
+            raise HTTPException(401, "wrong code")
+        throttle.succeeded(user.username, client, attempt)
+        twofactor.drop_challenge(conn, body.ticket)
+        result = log_in(request, response, conn, user, method)
+        if method == "recovery_code":
+            result["recovery_codes_left"] = twofactor.recovery_left(conn, user.id)
+        return result
+
+    def passkeys_on() -> None:
+        if not settings.public_url:
+            raise HTTPException(404, "passkeys are off: BUYBUTLER_PUBLIC_URL is not set")
+
+    @app.get("/api/session/options")
+    def login_options() -> dict:
+        """What the login page can offer, before anyone is logged in."""
+        return {"passkey_origin": settings.public_url or None}
+
+    @app.post("/api/session/passkey/options")
+    def passkey_login_options(body: PasskeyStart, conn: Conn) -> dict:
+        passkeys_on()
+        if body.ticket is None:
+            options, challenge = twofactor.authentication_options(conn, settings.passkey_rp_id, None)
+            return {"ticket": new_ticket(conn, "passkey_login", None, challenge), "options": options}
+        ticket = twofactor.get_challenge(conn, body.ticket, "second_factor")
+        if ticket is None:
+            raise HTTPException(401, "the login took too long, start again")
+        options, challenge = twofactor.authentication_options(conn, settings.passkey_rp_id, ticket["user_id"])
+        twofactor.set_challenge(conn, body.ticket, challenge)
+        return {"ticket": body.ticket, "options": options}
+
+    @app.post("/api/session/passkey")
+    def passkey_login(body: PasskeyAnswer, request: Request, response: Response, conn: Conn) -> dict:
+        passkeys_on()
+        ticket = twofactor.get_challenge(conn, body.ticket, "passkey_login", "second_factor")
+        if ticket is None or not ticket["challenge"]:
+            raise HTTPException(401, "the login took too long, start again")
+        client = client_of(request)
+        expected = ticket["user_id"]
+        # Who logs in is only known once the passkey holds, so a usernameless
+        # login counts against the client address alone.
+        name = user_by_id(conn, expected).username if expected is not None else None
+        wait, attempt = throttle.begin(name, client)
+        if attempt is None:
+            log.warning("login_throttled", extra={"client": client})
+            raise HTTPException(429, "too many failed logins, try again later", headers={"Retry-After": str(wait)})
+        # A challenge is answered once, right or wrong.
+        twofactor.drop_challenge(conn, body.ticket)
+        user_id = twofactor.authenticate(conn, settings.passkey_rp_id, settings.public_url, body.credential,
+                                         twofactor.challenge_of(ticket), expected)
+        user = user_by_id(conn, user_id) if user_id is not None else None
+        if user is None:
+            conn.commit()
+            log.warning("passkey_failed", extra={"client": client})
+            raise HTTPException(401, "the passkey was not accepted")
+        throttle.succeeded(name, client, attempt)
+        return log_in(request, response, conn, user, "passkey")
 
     @app.delete("/api/session", status_code=204)
     def logout(request: Request, response: Response, conn: Conn) -> None:
@@ -574,19 +716,22 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     def me(user: CurrentUser) -> dict:
         return {"username": user.username, "role": user.role, "currency": settings.currency}
 
-    @app.post("/api/session/password", status_code=204)
-    def change_password(body: PasswordChange, user: CurrentUser, request: Request, response: Response,
-                        conn: Conn) -> None:
-        # The same limit as the login: a session alone must not allow
-        # guessing the password.
+    def confirm_password(request: Request, conn: sqlite3.Connection, user: auth.User, password: str) -> None:
+        """The current password, for changes a stolen session must not make.
+        The same limit as the login: a session alone must not allow guessing it."""
         client = client_of(request)
         wait, attempt = throttle.begin(user.username, client)
         if attempt is None:
             raise HTTPException(429, "too many wrong passwords, try again later", headers={"Retry-After": str(wait)})
-        if auth.authenticate(conn, user.username, body.current) is None:
-            log.warning("password_change_refused", extra={"user_id": user.id})
+        if auth.authenticate(conn, user.username, password) is None:
+            log.warning("password_check_failed", extra={"user_id": user.id})
             raise HTTPException(400, "the current password is wrong")
         throttle.succeeded(user.username, client, attempt)
+
+    @app.post("/api/session/password", status_code=204)
+    def change_password(body: PasswordChange, user: CurrentUser, request: Request, response: Response,
+                        conn: Conn) -> None:
+        confirm_password(request, conn, user, body.current)
         try:
             auth.set_password(conn, user.id, body.new)
         except auth.AuthError as exc:
@@ -594,6 +739,104 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         # Every session ended with the change; this one continues with a new token.
         set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
         log.info("password_changed", extra={"user_id": user.id})
+
+    # ---- second factors of the logged-in user ---------------------------------
+
+    def security_json(conn: sqlite3.Connection, user: auth.User, codes: list[str] | None = None) -> dict:
+        result = twofactor.status(conn, user.id)
+        result["passkey_origin"] = settings.public_url or None
+        if codes is not None:
+            result["recovery_codes"] = codes
+        return result
+
+    def changed_second_factor(request: Request, response: Response, conn: sqlite3.Connection,
+                              user: auth.User, was_on: bool) -> list[str] | None:
+        """After a second factor was added: when two-factor login just
+        turned on, new recovery codes, and every other session ends (someone
+        who knew the password may have logged in before)."""
+        if was_on:
+            return None
+        codes = twofactor.new_recovery_codes(conn, user.id)
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user.id,))
+        set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
+        log.info("two_factor_enabled", extra={"user_id": user.id})
+        return codes
+
+    @app.get("/api/account/security")
+    def get_security(user: CurrentUser, conn: Conn) -> dict:
+        return security_json(conn, user)
+
+    @app.post("/api/account/totp")
+    def start_totp(body: PasswordConfirm, request: Request, user: CurrentUser, conn: Conn) -> dict:
+        confirm_password(request, conn, user, body.password)
+        try:
+            secret = twofactor.start_totp(conn, user.id)
+        except twofactor.TwoFactorError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return {"secret": secret, "uri": twofactor.provisioning_uri(secret, user.username)}
+
+    @app.post("/api/account/totp/confirm")
+    def confirm_totp(body: TotpConfirm, request: Request, response: Response, user: CurrentUser,
+                     conn: Conn) -> dict:
+        client = client_of(request)
+        wait, attempt = throttle.begin(user.username, client)
+        if attempt is None:
+            raise HTTPException(429, "too many wrong codes, try again later", headers={"Retry-After": str(wait)})
+        was_on = twofactor.enabled(conn, user.id)
+        if not twofactor.check_totp(conn, user.id, body.code, confirming=True):
+            raise HTTPException(400, "wrong code: check the time on the phone and try the next one")
+        throttle.succeeded(user.username, client, attempt)
+        log.info("totp_added", extra={"user_id": user.id})
+        return security_json(conn, user, changed_second_factor(request, response, conn, user, was_on))
+
+    @app.delete("/api/account/totp")
+    def remove_totp(body: PasswordConfirm, request: Request, user: CurrentUser, conn: Conn) -> dict:
+        confirm_password(request, conn, user, body.password)
+        twofactor.remove_totp(conn, user.id)
+        log.info("totp_removed", extra={"user_id": user.id})
+        return security_json(conn, user)
+
+    @app.post("/api/account/passkeys/options")
+    def passkey_register_options(body: PasswordConfirm, request: Request, user: CurrentUser, conn: Conn) -> dict:
+        passkeys_on()
+        confirm_password(request, conn, user, body.password)
+        options, challenge = twofactor.registration_options(conn, settings.passkey_rp_id, user.id, user.username)
+        return {"ticket": new_ticket(conn, "passkey_register", user.id, challenge), "options": options}
+
+    @app.post("/api/account/passkeys", status_code=201)
+    def add_passkey(body: PasskeyIn, request: Request, response: Response, user: CurrentUser,
+                    conn: Conn) -> dict:
+        passkeys_on()
+        ticket = twofactor.get_challenge(conn, body.ticket, "passkey_register")
+        if ticket is None or ticket["user_id"] != user.id:
+            raise HTTPException(400, "this took too long, start again")
+        twofactor.drop_challenge(conn, body.ticket)
+        was_on = twofactor.enabled(conn, user.id)
+        try:
+            passkey_id = twofactor.register(conn, settings.passkey_rp_id, settings.public_url, user.id,
+                                            body.credential, twofactor.challenge_of(ticket), body.name)
+        except twofactor.TwoFactorError as exc:
+            conn.commit()
+            raise HTTPException(400, str(exc)) from None
+        log.info("passkey_added", extra={"user_id": user.id, "passkey_id": passkey_id})
+        return security_json(conn, user, changed_second_factor(request, response, conn, user, was_on))
+
+    @app.delete("/api/account/passkeys/{passkey_id}")
+    def remove_passkey(passkey_id: int, body: PasswordConfirm, request: Request, user: CurrentUser,
+                       conn: Conn) -> dict:
+        confirm_password(request, conn, user, body.password)
+        if not twofactor.remove_passkey(conn, user.id, passkey_id):
+            raise HTTPException(404, "passkey not found")
+        log.info("passkey_removed", extra={"user_id": user.id, "passkey_id": passkey_id})
+        return security_json(conn, user)
+
+    @app.post("/api/account/recovery-codes")
+    def new_recovery_codes(body: PasswordConfirm, request: Request, user: CurrentUser, conn: Conn) -> dict:
+        confirm_password(request, conn, user, body.password)
+        if not twofactor.enabled(conn, user.id):
+            raise HTTPException(409, "recovery codes come with an authenticator app or a passkey")
+        log.info("recovery_codes_renewed", extra={"user_id": user.id})
+        return security_json(conn, user, twofactor.new_recovery_codes(conn, user.id))
 
     # ---- lists ---------------------------------------------------------------
 
@@ -716,7 +959,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             " (SELECT COUNT(*) FROM list_members m WHERE m.user_id = u.id) AS lists"
             " FROM users u ORDER BY u.username COLLATE NOCASE"
         ).fetchall()
-        return {"users": [dict(r) for r in rows]}
+        return {"users": [dict(r) | {"two_factor": twofactor.enabled(conn, r["id"])} for r in rows]}
 
     @app.get("/api/users")
     def get_users(user: CurrentUser, conn: Conn) -> dict:
@@ -757,6 +1000,16 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         except auth.AuthError as exc:
             raise HTTPException(400, str(exc)) from None
         log.info("password_reset", extra={"user_id": user_id})
+
+    @app.post("/api/users/{user_id}/reset-2fa")
+    def reset_two_factor(user_id: int, user: CurrentUser, conn: Conn) -> dict:
+        """For a user who lost their phone and their recovery codes."""
+        admin_only(user)
+        if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+            raise HTTPException(404, "user not found")
+        twofactor.reset(conn, user_id)
+        log.info("two_factor_reset", extra={"user_id": user_id})
+        return users_json(conn)
 
     @app.delete("/api/users/{user_id}", status_code=204)
     def delete_user(user_id: int, user: CurrentUser, conn: Conn) -> None:

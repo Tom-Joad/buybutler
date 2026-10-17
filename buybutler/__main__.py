@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, auth, config, db, lists
+from . import __version__, auth, config, db, lists, twofactor
 
 
 def _password(args: argparse.Namespace) -> str:
@@ -48,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         if action == "add":
             p.add_argument("--admin", action="store_true", help="may manage users")
     users.add_parser("list", help="list users")
+    p = users.add_parser("reset-2fa", help="remove the authenticator app, passkeys and recovery codes (lost phone)")
+    p.add_argument("name")
     p = users.add_parser("delete", help="delete a user; lists only they use go too, their ratings elsewhere stay")
     p.add_argument("name")
 
@@ -80,11 +82,16 @@ def main(argv: list[str] | None = None) -> int:
                     auth.set_password(conn, row["id"], _password(args))
                     print(f"Password of {row['username']} changed; their sessions have ended.")
                 elif args.action == "list":
-                    rows = conn.execute("SELECT username, role, created_at FROM users ORDER BY id").fetchall()
+                    rows = conn.execute("SELECT id, username, role, created_at FROM users ORDER BY id").fetchall()
                     if not rows:
                         print("No users yet. Add one with: buybutler user add <name>")
                     for r in rows:
-                        print(f"{r['username']}\t{r['role']}\t{r['created_at']}")
+                        second = "2fa" if twofactor.enabled(conn, r["id"]) else "password"
+                        print(f"{r['username']}\t{r['role']}\t{second}\t{r['created_at']}")
+                elif args.action == "reset-2fa":
+                    row = _user(conn, args.name)
+                    twofactor.reset(conn, row["id"])
+                    print(f"Two-factor login of {row['username']} removed; the password alone logs in again.")
                 elif args.action == "delete":
                     row = _user(conn, args.name)
                     try:

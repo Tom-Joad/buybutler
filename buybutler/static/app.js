@@ -86,7 +86,8 @@ async function api(method, path, body, { retries = RETRY_DELAYS.length, list } =
   const { res, repeated } = await send(method, path, payload, headers, retries);
   // A repeated delete whose first copy got through finds nothing left.
   if (method === "DELETE" && repeated && res.status === 404) return null;
-  if (res.status === 401 && path !== "/api/session") {
+  // A wrong password or code during the login is no reason to go to the login.
+  if (res.status === 401 && !path.startsWith("/api/session")) {
     state.user = null;
     go("#/login");
     throw new ApiError(401, "Logged out");
@@ -716,9 +717,119 @@ $("#delete-list-form").addEventListener("submit", async (ev) => {
 
 // ---- Login and account ----------------------------------------------------
 
+// ---- Passkeys (WebAuthn) ----------------------------------------------------
+//
+// The server sends options as JSON with binary fields in base64url, and
+// expects the browser's answer the same way.
+
+const b64url = {
+  decode(text) {
+    const b64 = text.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(text.length / 4) * 4, "=");
+    return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  },
+  encode(buffer) {
+    let text = "";
+    for (const byte of new Uint8Array(buffer)) text += String.fromCharCode(byte);
+    return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  },
+};
+
+const credentialList = (list) => (list || []).map((c) => ({ ...c, id: b64url.decode(c.id) }));
+
+// The site must be opened at the address passkeys are registered for.
+function passkeysHere(origin) {
+  return Boolean(origin && window.PublicKeyCredential && window.isSecureContext && location.origin === origin);
+}
+
+function credentialJSON(cred) {
+  const r = cred.response;
+  const response = { clientDataJSON: b64url.encode(r.clientDataJSON) };
+  if (r.attestationObject) {
+    response.attestationObject = b64url.encode(r.attestationObject);
+    if (r.getTransports) response.transports = r.getTransports();
+  } else {
+    response.authenticatorData = b64url.encode(r.authenticatorData);
+    response.signature = b64url.encode(r.signature);
+    if (r.userHandle) response.userHandle = b64url.encode(r.userHandle);
+  }
+  return {
+    id: cred.id,
+    rawId: b64url.encode(cred.rawId),
+    type: cred.type,
+    response,
+    clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+  };
+}
+
+async function passkeyGet(options) {
+  const cred = await navigator.credentials.get({ publicKey: {
+    ...options, challenge: b64url.decode(options.challenge), allowCredentials: credentialList(options.allowCredentials),
+  } });
+  return credentialJSON(cred);
+}
+
+async function passkeyCreate(options) {
+  const cred = await navigator.credentials.create({ publicKey: {
+    ...options,
+    challenge: b64url.decode(options.challenge),
+    user: { ...options.user, id: b64url.decode(options.user.id) },
+    excludeCredentials: credentialList(options.excludeCredentials),
+  } });
+  return credentialJSON(cred);
+}
+
+// The browser's own errors when the user cancels or the device refuses.
+function passkeyError(err) {
+  if (err instanceof ApiError || err.offline) return err;
+  if (err.name === "NotAllowedError") return new Error("Cancelled, or the passkey wasn't available.");
+  if (err.name === "InvalidStateError") return new Error("This device holds a passkey for Buybutler already.");
+  return new Error(`The passkey didn't work: ${err.message}`);
+}
+
+// ---- Login and account ----------------------------------------------------
+
+let pendingLogin = null; // { ticket, methods } between password and second step
+
 function showLogin() {
   show("view-login");
+  pendingLogin = null;
+  $("#login-form").hidden = false;
+  $("#second-form").hidden = true;
   $("#login-form [name=username]").focus();
+  // Requests here go out once: a repeated login step finds its challenge used.
+  api("GET", "/api/session/options", undefined, { retries: 0 })
+    .then((o) => { $("#passkey-login").hidden = !passkeysHere(o.passkey_origin); })
+    .catch(() => {});
+}
+
+function finishLogin(user) {
+  state.user = { username: user.username, role: user.role, currency: user.currency };
+  state.lists = null;
+  pendingLogin = null;
+  $("#login-form").password.value = "";
+  if (user.recovery_codes_left !== undefined) {
+    flash(`Logged in with a recovery code; ${plural(user.recovery_codes_left, "code")} left. `
+      + "New ones are under Account, Two-factor login.");
+  }
+  go("#/scan");
+}
+
+function showSecondStep(step) {
+  pendingLogin = step;
+  $("#login-form").hidden = true;
+  const form = $("#second-form");
+  form.hidden = false;
+  form.reset();
+  showInfo($("#second-message"), "");
+  const totp = step.methods.includes("totp");
+  const passkey = step.methods.includes("passkey") && Boolean(window.PublicKeyCredential);
+  $("#second-hint").textContent = totp
+    ? "Enter the 6-digit code from your authenticator app, or a recovery code."
+    : "Use your passkey, or enter a recovery code.";
+  $("#second-passkey").hidden = !passkey;
+  form.code.inputMode = totp ? "numeric" : "text";
+  if (passkey && !totp) $("#second-passkey").focus();
+  else form.code.focus();
 }
 
 $("#login-form").addEventListener("submit", async (ev) => {
@@ -727,17 +838,45 @@ $("#login-form").addEventListener("submit", async (ev) => {
   const msg = $("#login-message");
   showInfo(msg, "");
   try {
-    state.user = await api("POST", "/api/session", {
+    const result = await api("POST", "/api/session", {
       username: form.username.value,
       password: form.password.value,
     });
-    state.lists = null;
-    form.password.value = "";
-    go("#/scan");
+    if (result.second_factor) showSecondStep(result.second_factor);
+    else finishLogin(result);
   } catch (err) {
     showError(msg, err);
   }
 });
+
+$("#second-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  try {
+    finishLogin(await api("POST", "/api/session/second-factor",
+      { ticket: pendingLogin.ticket, code: form.code.value.trim() }, { retries: 0 }));
+  } catch (err) {
+    form.code.value = "";
+    showError($("#second-message"), err);
+    if (err.status === 401 && /start again/.test(err.message)) setTimeout(showLogin, 2500);
+  }
+});
+
+$("#second-cancel").addEventListener("click", showLogin);
+
+async function loginWithPasskey(ticket, msg) {
+  showInfo(msg, "");
+  try {
+    const start = await api("POST", "/api/session/passkey/options", ticket ? { ticket } : {}, { retries: 0 });
+    const credential = await passkeyGet(start.options);
+    finishLogin(await api("POST", "/api/session/passkey", { ticket: start.ticket, credential }, { retries: 0 }));
+  } catch (err) {
+    showError(msg, passkeyError(err));
+  }
+}
+
+$("#passkey-login").addEventListener("click", () => loginWithPasskey(null, $("#login-message")));
+$("#second-passkey").addEventListener("click", () => loginWithPasskey(pendingLogin.ticket, $("#second-message")));
 
 function showAccount() {
   show("view-account", "account");
@@ -745,6 +884,7 @@ function showAccount() {
   $("#password-form").reset();
   showInfo($("#a-message"), "");
   updateOutboxBadge();
+  showSecurity();
   $("#a-users-section").hidden = state.user.role !== "admin";
   if (state.user.role === "admin") loadUsers().catch((err) => showError($("#u-message"), err));
 }
@@ -783,6 +923,20 @@ function renderUsers(users) {
         }
       });
       actions.append(reset);
+      if (u.two_factor) {
+        const reset2fa = el("button", { type: "button", class: "edit linkish", text: "Reset two-factor" });
+        reset2fa.addEventListener("click", async () => {
+          if (!confirm(`Remove the authenticator app, passkeys and recovery codes of ${u.username}? `
+            + "Their password alone logs in again.")) return;
+          try {
+            renderUsers((await api("POST", `/api/users/${u.id}/reset-2fa`)).users);
+            showInfo($("#u-message"), `Two-factor login of ${u.username} removed.`);
+          } catch (err) {
+            showError($("#u-message"), err);
+          }
+        });
+        actions.append(reset2fa);
+      }
       if (!me) {
         const remove = el("button", { type: "button", class: "edit linkish", text: "Delete" });
         remove.addEventListener("click", async () => {
@@ -799,10 +953,169 @@ function renderUsers(users) {
       return el("li", {},
         el("div", { class: "head" }, el("span", { class: "word", text: me ? `${u.username} (you)` : u.username })),
         actions,
-        el("p", { class: "stamps", text: `${plural(u.lists, "list")} · created ${stamp(u.created_at)}` }));
+        el("p", { class: "stamps", text: `${plural(u.lists, "list")}${u.two_factor ? " · two-factor" : ""}`
+          + ` · created ${stamp(u.created_at)}` }));
     }),
   );
 }
+
+// ---- Two-factor login (account) -------------------------------------------
+
+async function showSecurity() {
+  $("#tf-password").value = "";
+  $("#tf-totp-setup").hidden = true;
+  $("#tf-codes").hidden = true;
+  showInfo($("#tf-message"), "");
+  try {
+    renderSecurity(await api("GET", "/api/account/security"));
+  } catch (err) {
+    showError($("#tf-message"), err);
+  }
+}
+
+function renderSecurity(sec) {
+  const parts = [];
+  if (sec.totp) parts.push("authenticator app");
+  if (sec.passkeys.length) parts.push(plural(sec.passkeys.length, "passkey"));
+  $("#tf-status").textContent = sec.enabled
+    ? `On: ${parts.join(" and ")}. ${plural(sec.recovery_codes_left, "recovery code")} left.`
+    : "Off: the password alone logs in. Add an authenticator app or a passkey to ask for more.";
+  $("#tf-totp-start").hidden = sec.totp;
+  $("#tf-totp-remove").hidden = !sec.totp;
+  $("#tf-codes-new").hidden = !sec.enabled;
+  if (sec.totp) $("#tf-totp-setup").hidden = true;
+
+  $("#tf-passkeys").replaceChildren(...sec.passkeys.map((pk) => {
+    const remove = el("button", { type: "button", class: "edit linkish", text: "Remove" });
+    remove.addEventListener("click", () => securityChange("DELETE", `/api/account/passkeys/${pk.id}`,
+      `Remove the passkey "${pk.name}"?`, "Passkey removed."));
+    const used = pk.last_used_at ? ` · last used ${stamp(pk.last_used_at)}` : " · not used yet";
+    return el("li", {},
+      el("div", { class: "head" }, el("span", { class: "word", text: pk.name }), remove),
+      el("p", { class: "stamps", text: `added ${stamp(pk.created_at)}${used}` }));
+  }));
+  const here = passkeysHere(sec.passkey_origin);
+  $("#tf-passkey-add-row").hidden = !here;
+  const note = $("#tf-passkey-note");
+  note.hidden = here;
+  if (!sec.passkey_origin) note.textContent = "Passkeys are off: the admin sets BUYBUTLER_PUBLIC_URL to turn them on.";
+  else if (!window.PublicKeyCredential || !window.isSecureContext) note.textContent = "This browser can't use passkeys here.";
+  else note.textContent = `Passkeys work when Buybutler is opened at ${sec.passkey_origin}.`;
+
+  if (sec.recovery_codes) {
+    $("#tf-codes").hidden = false;
+    $("#tf-code-list").replaceChildren(...sec.recovery_codes.map((code) => el("li", { text: code })));
+    $("#tf-code-list").dataset.codes = sec.recovery_codes.join("\n");
+  }
+}
+
+function tfPassword() {
+  const password = $("#tf-password").value;
+  if (!password) {
+    $("#tf-password").focus();
+    throw new Error("Enter your current password first.");
+  }
+  return password;
+}
+
+async function securityChange(method, path, question, done) {
+  const msg = $("#tf-message");
+  try {
+    const password = tfPassword();
+    if (question && !confirm(question)) return;
+    const sec = await api(method, path, { password }, { retries: 0 });
+    $("#tf-password").value = "";
+    renderSecurity(sec);
+    showInfo(msg, done);
+  } catch (err) {
+    showError(msg, err);
+  }
+}
+
+// The QR encoder is loaded only here. Its script defines the same global as
+// the barcode reader, which is put back afterwards.
+async function qrImage(text) {
+  if (!qrImage.writer) {
+    const reader = window.ZXingWASM;
+    await new Promise((resolve, reject) => {
+      const script = el("script", { src: "/static/vendor/zxing/writer.js" });
+      script.addEventListener("load", resolve);
+      script.addEventListener("error", () => reject(new Error("The QR code could not be loaded.")));
+      document.head.append(script);
+    });
+    qrImage.writer = window.ZXingWASM;
+    window.ZXingWASM = reader;
+    qrImage.writer.prepareZXingModule({ overrides: { locateFile: (file) => `/static/vendor/zxing/${file}` } });
+  }
+  const result = await qrImage.writer.writeBarcode(text, { format: "QRCode", ecLevel: "M" });
+  if (result.error) throw new Error(result.error);
+  return URL.createObjectURL(new Blob([result.svg], { type: "image/svg+xml" }));
+}
+
+$("#tf-totp-start").addEventListener("click", async () => {
+  const msg = $("#tf-message");
+  showInfo(msg, "");
+  try {
+    const setup = await api("POST", "/api/account/totp", { password: tfPassword() }, { retries: 0 });
+    $("#tf-password").value = "";
+    $("#tf-totp-setup").hidden = false;
+    $("#tf-secret").textContent = setup.secret.replace(/(.{4})/g, "$1 ").trim();
+    $("#tf-code").value = "";
+    const img = $("#tf-qr");
+    img.hidden = true;
+    try {
+      img.src = await qrImage(setup.uri);
+      img.hidden = false;
+    } catch (err) {
+      showError(msg, new Error(`${err.message} Type in the key by hand.`));
+    }
+    $("#tf-code").focus();
+  } catch (err) {
+    showError(msg, err);
+  }
+});
+
+$("#tf-totp-confirm").addEventListener("click", async () => {
+  const msg = $("#tf-message");
+  try {
+    const sec = await api("POST", "/api/account/totp/confirm", { code: $("#tf-code").value.trim() }, { retries: 0 });
+    renderSecurity(sec);
+    showInfo(msg, "Authenticator app added. From now on the login asks for its code.");
+  } catch (err) {
+    showError(msg, err);
+  }
+});
+
+$("#tf-totp-remove").addEventListener("click", () => securityChange("DELETE", "/api/account/totp",
+  "Remove the authenticator app?", "Authenticator app removed."));
+
+$("#tf-codes-new").addEventListener("click", () => securityChange("POST", "/api/account/recovery-codes",
+  "Make new recovery codes? The old ones stop working.", "New recovery codes made; the old ones no longer work."));
+
+$("#tf-passkey-add").addEventListener("click", async () => {
+  const msg = $("#tf-message");
+  showInfo(msg, "");
+  try {
+    const start = await api("POST", "/api/account/passkeys/options", { password: tfPassword() }, { retries: 0 });
+    $("#tf-password").value = "";
+    const credential = await passkeyCreate(start.options);
+    const name = $("#tf-passkey-name").value.trim() || "Passkey";
+    renderSecurity(await api("POST", "/api/account/passkeys", { ticket: start.ticket, credential, name }, { retries: 0 }));
+    $("#tf-passkey-name").value = "";
+    showInfo(msg, "Passkey added.");
+  } catch (err) {
+    showError(msg, passkeyError(err));
+  }
+});
+
+$("#tf-codes-copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("#tf-code-list").dataset.codes);
+    showInfo($("#tf-message"), "Recovery codes copied.");
+  } catch {
+    showError($("#tf-message"), new Error("Copying isn't allowed here; write the codes down."));
+  }
+});
 
 $("#user-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
