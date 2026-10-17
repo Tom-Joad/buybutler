@@ -62,20 +62,33 @@ Without it, run `buybutler backup` in the console first.
 ## Icon
 
 The template names the icon `unraid/icon.png` of this repository. The
-repository is private, so Unraid can't download it; copy it to the flash
-drive once instead. Unraid looks there before it tries the URL:
+repository is private, so Unraid can't download it. Copy it once into
+Unraid's icon folder instead; Unraid uses a file there before it tries the
+URL (`getIcon` in `DockerClient.php`, Unraid 7):
 
-1. Download [`unraid/icon.png`](icon.png) from the repository on
-   GitHub (logged in).
-2. Save it as `/boot/config/plugins/dockerMan/images/Buybutler-icon.png`, for
-   example over the `flash` share:
-   `\\<SERVER>\flash\config\plugins\dockerMan\images\Buybutler-icon.png`.
+1. Download [`unraid/icon.png`](icon.png) from the repository on GitHub
+   (logged in) and put it on any share, for example as
+   `\\<SERVER>\appdata\Buybutler-icon.png`.
+2. In the Unraid terminal, copy it into the icon folder of the Docker data:
+
+   ```sh
+   cp /mnt/user/appdata/Buybutler-icon.png /var/lib/docker/unraid/images/Buybutler-icon.png
+   ```
+
    The part before `-icon.png` is the container's name in Unraid, with the
-   same capitals; rename the file if you named the container differently.
-3. Reload the Docker tab.
+   same capitals; use that name if you named the container differently.
+3. Unraid keeps the placeholder it has already picked for the container
+   until the next reboot. To show the icon at once, drop that entry from its
+   cache, then reload the Docker tab:
 
-The copy survives reboots and updates. If the container was renamed, copy
-the file under the new name.
+   ```sh
+   php -r '$f="/usr/local/emhttp/state/plugins/dynamix.docker.manager/docker.json"; $j=json_decode(file_get_contents($f),true); unset($j["Buybutler"]["icon"]); file_put_contents($f,json_encode($j,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));'
+   ```
+
+The copy survives reboots and container updates. It lives in the Docker
+data, not on the flash drive, so it is gone when the Docker image or
+directory is recreated; copy it again then. Unraid does not read icons from
+`/boot/config/plugins/dockerMan/images/`.
 
 ## Template changes
 
