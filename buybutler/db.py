@@ -109,6 +109,44 @@ MIGRATIONS: list[str] = [
     CREATE UNIQUE INDEX ratings_client_id ON ratings(client_id) WHERE client_id IS NOT NULL;
     CREATE UNIQUE INDEX prices_client_id ON prices(client_id) WHERE client_id IS NOT NULL;
     """,
+    # 4: several lists shared between users with roles, instead of one
+    # household per user. The household becomes the first list; its admin
+    # its owner, everyone else an editor. users loses household_id (rebuilt,
+    # as SQLite can't drop a foreign-key column).
+    """
+    ALTER TABLE households RENAME TO lists;
+    ALTER TABLE lists ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE products RENAME COLUMN household_id TO list_id;
+
+    CREATE TABLE list_members (
+        list_id     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role        TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        PRIMARY KEY (list_id, user_id)
+    );
+    CREATE INDEX list_members_user ON list_members(user_id);
+
+    INSERT INTO list_members (list_id, user_id, role, created_at, updated_at)
+        SELECT household_id, id, CASE role WHEN 'admin' THEN 'owner' ELSE 'editor' END, created_at, created_at
+        FROM users;
+    UPDATE lists SET created_by = (
+        SELECT MIN(u.id) FROM users u WHERE u.household_id = lists.id AND u.role = 'admin');
+
+    CREATE TABLE users_new (
+        id             INTEGER PRIMARY KEY,
+        username       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash  TEXT NOT NULL,
+        role           TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL
+    );
+    INSERT INTO users_new (id, username, password_hash, role, created_at, updated_at)
+        SELECT id, username, password_hash, role, created_at, updated_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+    """,
 ]
 
 
@@ -135,6 +173,9 @@ def migrate(path: Path) -> tuple[int, int]:
         # WAL lets the web app read while a write is in progress; the setting
         # is stored in the file and survives restarts.
         conn.execute("PRAGMA journal_mode = WAL")
+        # Steps that rebuild a table must not trip the foreign keys midway;
+        # they are checked once all steps are done.
+        conn.execute("PRAGMA foreign_keys = OFF")
         before = conn.execute("PRAGMA user_version").fetchone()[0]
         if before > len(MIGRATIONS):
             raise RuntimeError(
@@ -146,6 +187,9 @@ def migrate(path: Path) -> tuple[int, int]:
             conn.executescript(
                 "BEGIN;" + MIGRATIONS[version] + f"PRAGMA user_version = {version + 1}; COMMIT;"
             )
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if broken:
+            raise RuntimeError(f"database has {len(broken)} broken references after the migration")
         return before, len(MIGRATIONS)
     finally:
         conn.close()
