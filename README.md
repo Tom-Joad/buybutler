@@ -7,6 +7,11 @@ reason, the store and the date. Unknown products are filled in from
 [Open Food Facts](https://world.openfoodfacts.org/). Products without a
 barcode (bakery, market) are added by hand.
 
+Optionally, note what you paid: the price, the quantity it was for
+(`500 g`, `1.5 l`, `6 piece`) and whether it was an offer. Each product
+keeps its price history with the price per kg, litre or piece, and the
+lowest and highest regular price.
+
 Every entry keeps the time it was made and last changed. Rating a product
 again adds to its history instead of replacing it ("recipe changed, now too
 sweet"); the newest rating is the verdict.
@@ -97,6 +102,7 @@ except scanning; type the barcode instead.
 | `-e UMASK` | `022` | File mode mask for new files (Unraid: `002`) |
 | `-e TZ` | `Etc/UTC` | Time zone: the default date of a rating, and the log |
 | `-e BUYBUTLER_OFF_LANGUAGE` | `en` | Language of product names from Open Food Facts, two letters (`de`, `fr` …) |
+| `-e BUYBUTLER_CURRENCY` | `EUR` | Currency of all prices, a three-letter code (`EUR`, `CHF` …); amounts are shown in the browser's number format |
 | `-e BUYBUTLER_OFF_LOOKUP` | `true` | `false` never sends barcodes to Open Food Facts; products are entered by hand |
 | `-e BUYBUTLER_SESSION_DAYS` | `90` | Days a login stays valid without being used (1 to 3650) |
 | `-e BUYBUTLER_MAX_UPLOAD_MB` | `10` | Largest accepted picture (1 to 100); the browser shrinks photos before sending |
@@ -111,7 +117,7 @@ A malformed setting stops the container with an `ERROR:` line in the log.
 
 | Path | Content |
 |---|---|
-| `/config/buybutler.sqlite3` | The database: users, products, ratings, all time stamps |
+| `/config/buybutler.sqlite3` | The database: users, products, ratings, prices, all time stamps |
 | `/config/images/products/` | Product pictures (from Open Food Facts, or your own) |
 | `/config/images/ratings/` | Photos attached to ratings |
 | `/config/backups/` | Copies written by `buybutler backup` |

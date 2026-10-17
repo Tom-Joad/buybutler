@@ -75,7 +75,7 @@ EOF
 
 status_of() { head -n1 <<<"$1"; }
 
-for bad in "BUYBUTLER_PORT=eighty" "BUYBUTLER_OFF_LOOKUP=maybe" "BUYBUTLER_SESSION_DAYS=0"; do
+for bad in "BUYBUTLER_PORT=eighty" "BUYBUTLER_OFF_LOOKUP=maybe" "BUYBUTLER_SESSION_DAYS=0" "BUYBUTLER_CURRENCY=EURO"; do
     echo "== $bad stops the container"
     docker rm -f "$NAME" >/dev/null 2>&1 || true
     docker run -d --name "$NAME" -e "$bad" "$IMAGE" >/dev/null
@@ -124,6 +124,9 @@ R=$(http POST /api/products '{"name":"Smoke bread","barcode":"4000000000001"}')
 R=$(http POST /api/products/1/ratings '{"buy_again":false,"stars":2,"reason":"Too dry","store":"Corner shop"}')
 [[ $(status_of "$R") == 201 ]] || fail "rating not created: $R"
 grep -q '"created_at":"20[0-9-]*T' <<<"$R" || fail "rating has no time stamp"
+R=$(http POST /api/products/1/prices '{"amount_cents":249,"quantity":500,"unit":"g","on_offer":true}')
+[[ $(status_of "$R") == 201 ]] || fail "price not created: $R"
+grep -q '"unit_price":{"amount_cents":498,"per":"kg"}' <<<"$R" || fail "no unit price: $R"
 [[ -z $(find "$WORK/config" -user 0 -print -quit) ]] || fail "files in /config owned by root"
 if grep -rq "$PASSWORD" "$WORK/config" 2>/dev/null; then fail "password stored in clear text"; fi
 
@@ -145,6 +148,7 @@ R=$(http POST /api/session "{\"username\":\"smoke\",\"password\":\"$PASSWORD\"}"
 [[ $(status_of "$R") == 200 ]] || fail "login failed after re-create"
 R=$(http GET /api/products/1)
 grep -q 'Too dry' <<<"$R" || fail "rating lost after re-create"
+grep -q '"amount_cents":249' <<<"$R" || fail "price lost after re-create"
 
 echo "== a changed PUID takes the files over"
 docker rm -f "$NAME" >/dev/null

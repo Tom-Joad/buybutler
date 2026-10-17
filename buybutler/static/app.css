@@ -494,6 +494,61 @@ textarea {
   margin-left: auto;
 }
 
+/* ---- Prices ------------------------------------------------------------- */
+
+.price-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.price-fields legend {
+  padding: 0;
+  margin-bottom: var(--space-10);
+}
+
+.price-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 0.8fr;
+  gap: var(--space-10);
+  margin-bottom: var(--space-12);
+}
+
+.price-row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.price-last {
+  margin: 0;
+  font: var(--text-caption);
+  font-size: 17px;
+}
+
+.price-last strong {
+  font: var(--text-stat);
+  font-size: 28px;
+  color: var(--text-strong);
+  margin-right: var(--space-6);
+}
+
+.tag {
+  display: inline-block;
+  margin-left: var(--space-10);
+  padding: 2px var(--space-6);
+  border: var(--stroke-hairline) solid var(--status-warning);
+  color: var(--text-strong);
+  background: var(--status-warning);
+  font: var(--text-nav);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.list-price {
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
 /* ---- Lists -------------------------------------------------------------- */
 
 .tabs {

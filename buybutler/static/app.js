@@ -88,6 +88,77 @@ function stars(count) {
   return box;
 }
 
+// ---- Prices --------------------------------------------------------------
+
+function money(cents) {
+  const currency = (state.user && state.user.currency) || "EUR";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency}`;
+  }
+}
+
+// "2,49" or "2.49" -> 249; empty -> null.
+function parseAmount(text) {
+  const t = text.trim();
+  if (!t) return null;
+  if (!/^\d+([.,]\d{1,2})?$/.test(t)) throw new Error("Enter the price as a number, e.g. 2.49");
+  const [whole, frac = ""] = t.replace(",", ".").split(".");
+  return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+}
+
+function parseQuantity(text) {
+  const t = text.trim();
+  if (!t) return null;
+  if (!/^\d+([.,]\d+)?$/.test(t) || Number(t.replace(",", ".")) <= 0) {
+    throw new Error("Enter the quantity as a number, e.g. 500");
+  }
+  return Number(t.replace(",", "."));
+}
+
+// The price fields of a form as an API object; null when no price was entered.
+function readPrice(form) {
+  const amount = parseAmount(form.price.value);
+  const quantity = parseQuantity(form.quantity.value);
+  const unit = form.unit.value.trim();
+  // The quantity is often prefilled; without a price nothing is stored.
+  if (amount === null) return null;
+  if (quantity !== null && !unit) throw new Error("Enter the unit for the quantity, e.g. g or l.");
+  if (quantity === null && unit) throw new Error("Enter the quantity for the unit.");
+  return { amount_cents: amount, quantity, unit, on_offer: form.on_offer.checked };
+}
+
+function fillPriceFields(form, pr) {
+  form.price.value = pr ? (pr.amount_cents / 100).toFixed(2) : "";
+  form.quantity.value = pr && pr.quantity ? String(pr.quantity) : "";
+  form.unit.value = pr ? pr.unit : "";
+  form.on_offer.checked = !!(pr && pr.on_offer);
+}
+
+// Quantity from the last price, or from the pack size ("400 g e") when it
+// reads cleanly; the user can change it.
+function suggestQuantity(form, product) {
+  const last = product.price && product.price.last;
+  if (last && last.quantity) {
+    form.quantity.value = String(last.quantity);
+    form.unit.value = last.unit;
+    return;
+  }
+  const m = /^(\d+(?:[.,]\d+)?)\s*(g|kg|ml|cl|l)\b/i.exec(product.quantity || "");
+  if (m) {
+    form.quantity.value = m[1].replace(",", ".");
+    form.unit.value = m[2].toLowerCase();
+  }
+}
+
+function priceText(pr) {
+  const parts = [money(pr.amount_cents)];
+  if (pr.quantity) parts.push(`for ${pr.quantity} ${pr.unit}`);
+  if (pr.unit_price) parts.push(`${money(pr.unit_price.amount_cents)} per ${pr.unit_price.per}`);
+  return parts.join(" · ");
+}
+
 function verdictWord(buy) {
   return el("span", { class: "word" }, el("i", { class: `mark mark--${buy ? "buy" : "skip"}` }),
     document.createTextNode(buy ? "Buy again" : "Don't buy again"));
@@ -143,6 +214,7 @@ async function route() {
         if (parts[2] === "edit") return await showProductForm(id);
         if (parts[2] === "rate") return await showRateForm(id, null);
         if (parts[2] === "rating") return await showRateForm(id, Number(parts[3]));
+        if (parts[2] === "price") return await showPriceForm(id, parts[3] ? Number(parts[3]) : null);
         return await showProduct(id);
       }
       default:
@@ -376,6 +448,37 @@ async function showProduct(id) {
   $("#p-rate").textContent = p.rating ? "Rate again" : "Rate";
   $("#p-edit").href = `#/product/${p.id}/edit`;
 
+  const summary = $("#p-price-summary");
+  summary.replaceChildren();
+  if (p.price) {
+    const s = p.price;
+    summary.append(el("p", { class: "price-last" }, el("strong", { text: money(s.last.amount_cents) }),
+      document.createTextNode(s.last.unit_price ? ` · ${money(s.last.unit_price.amount_cents)} per ${s.last.unit_price.per}` : ""),
+      s.last.on_offer ? el("span", { class: "tag", text: "On offer" }) : null));
+    const range = [];
+    const value = (pr) => (pr.unit_price ? `${money(pr.unit_price.amount_cents)}/${pr.unit_price.per}` : money(pr.amount_cents));
+    if (s.lowest && s.highest && s.lowest.id !== s.highest.id) {
+      range.push(`Lowest ${value(s.lowest)} · highest ${value(s.highest)}`);
+    }
+    if (range.length) summary.append(el("p", { class: "meta", text: `${range.join("")} (offers left out)` }));
+  } else {
+    summary.append(el("p", { class: "meta", text: "No prices yet." }));
+  }
+  $("#p-prices").replaceChildren(
+    ...(p.prices || []).map((pr) =>
+      el("li", {},
+        el("div", { class: "head" },
+          el("span", { class: "word", text: priceText(pr) }),
+          pr.on_offer ? el("span", { class: "tag", text: "On offer" }) : null,
+          el("a", { class: "edit", href: `#/product/${p.id}/price/${pr.id}`, text: "Edit" })),
+        el("p", {
+          class: "stamps",
+          text: [pr.bought_on, pr.store, pr.user && `by ${pr.user}`, `entered ${stamp(pr.created_at)}`,
+            pr.updated_at !== pr.created_at ? `changed ${stamp(pr.updated_at)}` : null].filter(Boolean).join(" · "),
+        }))),
+  );
+  $("#p-add-price").href = `#/product/${p.id}/price`;
+
   const list = $("#p-history");
   list.replaceChildren(
     ...p.ratings.map((r) =>
@@ -527,6 +630,11 @@ async function showRateForm(productId, ratingId) {
   $("#r-cancel").href = `#/product/${p.id}`;
   form.dataset.product = p.id;
 
+  fillPriceFields(form, null);
+  // Prices of an existing rating are edited in the price list.
+  $("#r-price-fields").hidden = !!ratingId;
+  if (!ratingId) suggestQuantity(form, p);
+
   const rating = ratingId ? p.ratings.find((r) => r.id === ratingId) : null;
   if (ratingId && !rating) throw new ApiError(404, "rating not found");
   if (rating) {
@@ -567,6 +675,10 @@ $("#rate-form").addEventListener("submit", async (ev) => {
     rated_on: form.rated_on.value || today(),
   };
   try {
+    if (!form.dataset.rating) {
+      const price = readPrice(form);
+      if (price) body.price = price;
+    }
     let r;
     if (form.dataset.rating) {
       if (chosenStars === null) body.clear_stars = true;
@@ -592,6 +704,71 @@ $("#r-delete").addEventListener("click", async () => {
   const form = $("#rate-form");
   if (!form.dataset.rating || !confirm("Delete this rating?")) return;
   await api("DELETE", `/api/ratings/${form.dataset.rating}`);
+  go(`#/product/${form.dataset.product}`);
+});
+
+// ---- Price form -------------------------------------------------------------
+
+async function showPriceForm(productId, priceId) {
+  await loadFacets();
+  const p = await api("GET", `/api/products/${productId}`);
+  state.product = p;
+  show("view-price", "lists");
+  const form = $("#price-form");
+  form.reset();
+  showInfo($("#pr-message"), "");
+  $("#pr-product").textContent = p.name;
+  $("#pr-cancel").href = `#/product/${p.id}`;
+  form.dataset.product = p.id;
+  const pr = priceId ? (p.prices || []).find((x) => x.id === priceId) : null;
+  if (priceId && !pr) throw new ApiError(404, "price not found");
+  if (pr) {
+    $("#pr-title").textContent = "Edit price";
+    form.dataset.price = pr.id;
+    fillPriceFields(form, pr);
+    form.store.value = pr.store;
+    form.bought_on.value = pr.bought_on;
+    $("#pr-delete").hidden = false;
+  } else {
+    $("#pr-title").textContent = "Add a price";
+    delete form.dataset.price;
+    fillPriceFields(form, null);
+    suggestQuantity(form, p);
+    if (p.price) form.store.value = p.price.last.store;
+    form.bought_on.value = today();
+    $("#pr-delete").hidden = true;
+  }
+  form.price.focus();
+}
+
+$("#price-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const msg = $("#pr-message");
+  try {
+    const price = readPrice(form);
+    if (!price) throw new Error("Enter the price.");
+    const body = { ...price, store: form.store.value, bought_on: form.bought_on.value || today() };
+    if (form.dataset.price) {
+      if (body.quantity === null) {
+        delete body.quantity;
+        delete body.unit;
+        body.clear_quantity = true;
+      }
+      await api("PATCH", `/api/prices/${form.dataset.price}`, body);
+    } else {
+      await api("POST", `/api/products/${form.dataset.product}/prices`, body);
+    }
+    go(`#/product/${form.dataset.product}`);
+  } catch (err) {
+    showError(msg, err);
+  }
+});
+
+$("#pr-delete").addEventListener("click", async () => {
+  const form = $("#price-form");
+  if (!form.dataset.price || !confirm("Delete this price?")) return;
+  await api("DELETE", `/api/prices/${form.dataset.price}`);
   go(`#/product/${form.dataset.product}`);
 });
 
@@ -655,7 +832,8 @@ async function loadList() {
             el("span", { class: "sub" },
               p.rating ? verdictWord(p.rating.buy_again) : el("span", { class: "word", text: "Not rated" }),
               p.rating ? stars(p.rating.stars) : null,
-              el("span", { text: [p.brand, p.rating && p.rating.store].filter(Boolean).join(" · ") })),
+              el("span", { text: [p.brand, p.rating && p.rating.store].filter(Boolean).join(" · ") }),
+              p.price ? el("span", { class: "list-price", text: money(p.price.last.amount_cents) }) : null),
             p.rating && p.rating.reason ? el("span", { class: "why", text: p.rating.reason }) : null)))),
   );
 }

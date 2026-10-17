@@ -51,6 +51,7 @@ class Settings:
     off_language: str
     trusted_proxies: str
     max_upload_mb: int
+    currency: str
 
     @property
     def database(self) -> Path:
@@ -74,6 +75,10 @@ def load() -> Settings:
     if not (len(language) == 2 and language.isascii() and language.isalpha()):
         raise ConfigError(f"BUYBUTLER_OFF_LANGUAGE must be a two-letter language code, got {language!r}")
 
+    currency = os.environ.get("BUYBUTLER_CURRENCY", "EUR").strip().upper() or "EUR"
+    if not (len(currency) == 3 and currency.isascii() and currency.isalpha()):
+        raise ConfigError(f"BUYBUTLER_CURRENCY must be a three-letter currency code, got {currency!r}")
+
     return Settings(
         data_dir=Path(os.environ.get("BUYBUTLER_DATA_DIR", "/config")),
         host=os.environ.get("BUYBUTLER_HOST", "0.0.0.0"),
@@ -84,4 +89,5 @@ def load() -> Settings:
         off_language=language,
         trusted_proxies=os.environ.get("BUYBUTLER_TRUSTED_PROXIES", "*").strip() or "*",
         max_upload_mb=_int("BUYBUTLER_MAX_UPLOAD_MB", 10, 1, 100),
+        currency=currency,
     )

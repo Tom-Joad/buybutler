@@ -84,6 +84,10 @@
       <a class="btn btn--primary" id="p-rate" href="#">Rate again</a>
       <a class="btn btn--outline" id="p-edit" href="#">Edit product</a>
     </div>
+    <h2 class="section-title">Prices</h2>
+    <div class="price-summary" id="p-price-summary"></div>
+    <ol class="history" id="p-prices"></ol>
+    <a class="ghost" id="p-add-price" href="#">Add a price →</a>
     <h2 class="section-title">History</h2>
     <ol class="history" id="p-history"></ol>
     <p class="stamps" id="p-stamps"></p>
@@ -163,6 +167,27 @@
         <span class="label">Date</span>
         <input name="rated_on" type="date" required>
       </label>
+      <fieldset class="price-fields" id="r-price-fields">
+        <legend class="label">Price paid, optional</legend>
+        <div class="price-row">
+          <label class="field">
+            <span class="label">Price</span>
+            <input name="price" inputmode="decimal" autocomplete="off" placeholder="2.49" pattern="[0-9]+([.,][0-9]{1,2})?">
+          </label>
+          <label class="field">
+            <span class="label">For</span>
+            <input name="quantity" inputmode="decimal" autocomplete="off" placeholder="500" pattern="[0-9]+([.,][0-9]+)?">
+          </label>
+          <label class="field">
+            <span class="label">Unit</span>
+            <input name="unit" maxlength="20" list="units" autocomplete="off" placeholder="g">
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" name="on_offer">
+          <span>On offer</span>
+        </label>
+      </fieldset>
       <label class="field">
         <span class="label">Photo</span>
         <input name="photo" type="file" accept="image/*">
@@ -173,6 +198,49 @@
         <a class="btn btn--outline" href="#" id="r-cancel">Cancel</a>
       </div>
       <button class="btn btn--outline btn--danger" type="button" id="r-delete" hidden>Delete rating</button>
+    </form>
+  </section>
+
+  <!-- Price form -->
+  <section class="view" id="view-price" hidden>
+    <p class="eyebrow" id="pr-product"></p>
+    <h1 id="pr-title">Add a price</h1>
+    <form id="price-form" class="stack">
+      <fieldset class="price-fields" id="pr-price-fields">
+        <legend class="label">Price paid</legend>
+        <div class="price-row">
+          <label class="field">
+            <span class="label">Price</span>
+            <input name="price" inputmode="decimal" autocomplete="off" placeholder="2.49" pattern="[0-9]+([.,][0-9]{1,2})?">
+          </label>
+          <label class="field">
+            <span class="label">For</span>
+            <input name="quantity" inputmode="decimal" autocomplete="off" placeholder="500" pattern="[0-9]+([.,][0-9]+)?">
+          </label>
+          <label class="field">
+            <span class="label">Unit</span>
+            <input name="unit" maxlength="20" list="units" autocomplete="off" placeholder="g">
+          </label>
+        </div>
+        <label class="check">
+          <input type="checkbox" name="on_offer">
+          <span>On offer</span>
+        </label>
+      </fieldset>
+      <label class="field">
+        <span class="label">Store</span>
+        <input name="store" maxlength="100" list="stores">
+      </label>
+      <label class="field">
+        <span class="label">Date</span>
+        <input name="bought_on" type="date" required>
+      </label>
+      <p class="message" id="pr-message" role="alert"></p>
+      <div class="row">
+        <button class="btn btn--primary" type="submit">Save price</button>
+        <a class="btn btn--outline" href="#" id="pr-cancel">Cancel</a>
+      </div>
+      <button class="btn btn--outline btn--danger" type="button" id="pr-delete" hidden>Delete price</button>
     </form>
   </section>
 
@@ -192,6 +260,7 @@
         <option value="recent">Newest first</option>
         <option value="name">By name</option>
         <option value="stars">By stars</option>
+        <option value="price">By last price</option>
       </select>
     </form>
     <p class="meta" id="l-count"></p>
@@ -222,6 +291,13 @@
 
 <datalist id="stores"></datalist>
 <datalist id="categories"></datalist>
+<datalist id="units">
+  <option value="g"></option>
+  <option value="kg"></option>
+  <option value="ml"></option>
+  <option value="l"></option>
+  <option value="piece"></option>
+</datalist>
 
 </body>
 </html>

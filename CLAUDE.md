@@ -41,6 +41,8 @@ names, reasons, user names, barcodes or passwords.
   the wordmark's stop and the one primary button per view.
 * User text is inserted with `textContent`, never `innerHTML`.
 * Every request that changes data carries `X-Buybutler: 1`.
+* Money is integer cents, rounded half up (`Decimal`), never floats; the
+  currency comes from `BUYBUTLER_CURRENCY`.
 
 ## Testing
 
