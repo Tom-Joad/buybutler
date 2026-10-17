@@ -4,7 +4,7 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
-## [Unreleased]
+## [0.10.0] - 2026-10-18
 
 ### Added
 - **Shopping list** (**Shop** in the top bar), one per list and shared by
@@ -135,6 +135,7 @@ need action when upgrading; the entry says so.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[0.10.0]: https://github.com/Tom-Joad/buybutler/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Tom-Joad/buybutler/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Tom-Joad/buybutler/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Tom-Joad/buybutler/compare/v0.6.0...v0.7.0
