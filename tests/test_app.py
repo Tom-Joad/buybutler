@@ -107,7 +107,7 @@ def test_login_and_logout(client):
     assert r.status_code == 200
     cookie = r.headers["set-cookie"]
     assert "HttpOnly" in cookie and "SameSite=lax" in cookie
-    assert client.get("/api/session").json() == {"username": "tj", "role": "admin"}
+    assert client.get("/api/session").json() == {"username": "tj", "role": "admin", "currency": "EUR"}
     assert client.delete("/api/session", headers=H).status_code == 204
     assert client.get("/api/session").status_code == 401
 
@@ -455,3 +455,130 @@ def test_refuses_newer_schema(settings):
     conn.close()
     with pytest.raises(RuntimeError):
         db.migrate(settings.database)
+
+
+# ---- prices ----------------------------------------------------------------
+
+
+def add_price(c, product_id: int, **kw) -> dict:
+    body = {"amount_cents": 249} | kw
+    r = c.post(f"/api/products/{product_id}/prices", json=body, headers=H)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_price_is_optional_and_has_time_stamps(logged_in):
+    p = make_product(logged_in)
+    assert p["price"] is None
+    pr = add_price(logged_in, p["id"], quantity=500, unit="g", store="Market A", bought_on="2026-10-01")
+    assert pr["amount_cents"] == 249 and pr["unit_price"] == {"amount_cents": 498, "per": "kg"}
+    assert pr["created_at"].endswith("Z") and pr["user"] == "tj" and pr["on_offer"] is False
+
+
+def test_rating_can_carry_a_price(logged_in):
+    p = make_product(logged_in)
+    r = rate(logged_in, p["id"], store="Market B", rated_on="2026-10-02",
+             price={"amount_cents": 199, "quantity": 1.5, "unit": "l"})
+    detail = logged_in.get(f"/api/products/{p['id']}").json()
+    assert len(detail["prices"]) == 1
+    pr = detail["prices"][0]
+    assert pr["rating_id"] == r["id"] and pr["store"] == "Market B" and pr["bought_on"] == "2026-10-02"
+    assert pr["unit_price"] == {"amount_cents": 133, "per": "l"}
+    # Without a price nothing is stored.
+    rate(logged_in, p["id"])
+    assert len(logged_in.get(f"/api/products/{p['id']}").json()["prices"]) == 1
+
+
+def test_price_summary_skips_offers_and_converts_units(logged_in):
+    p = make_product(logged_in)
+    add_price(logged_in, p["id"], amount_cents=450, quantity=1, unit="kg", bought_on="2026-01-01")
+    add_price(logged_in, p["id"], amount_cents=249, quantity=500, unit="g", bought_on="2026-05-01")
+    add_price(logged_in, p["id"], amount_cents=99, quantity=500, unit="g", on_offer=True, bought_on="2026-06-01")
+    add_price(logged_in, p["id"], amount_cents=279, quantity=500, unit="G", bought_on="2026-09-01")
+    # Another unit basis doesn't count against per-kg prices.
+    add_price(logged_in, p["id"], amount_cents=10, quantity=1, unit="piece", bought_on="2026-02-01")
+    summary = logged_in.get(f"/api/products/{p['id']}").json()["price"]
+    assert summary["last"]["amount_cents"] == 279
+    assert summary["basis"] == "kg"
+    assert summary["lowest"]["amount_cents"] == 450  # 4.50 per kg
+    assert summary["highest"]["amount_cents"] == 279  # 5.58 per kg
+    assert summary["count"] == 5
+
+
+def test_unit_price_rounds_half_up(logged_in):
+    p = make_product(logged_in)
+    pr = add_price(logged_in, p["id"], amount_cents=349, quantity=400, unit="g")
+    assert pr["unit_price"] == {"amount_cents": 873, "per": "kg"}
+
+
+def test_price_summary_without_quantities(logged_in):
+    p = make_product(logged_in)
+    add_price(logged_in, p["id"], amount_cents=300, bought_on="2026-01-01")
+    add_price(logged_in, p["id"], amount_cents=200, bought_on="2026-02-01")
+    add_price(logged_in, p["id"], amount_cents=500, quantity=1, unit="kg", bought_on="2025-01-01")
+    s = logged_in.get(f"/api/products/{p['id']}").json()["price"]
+    assert s["basis"] is None and s["lowest"]["amount_cents"] == 200 and s["highest"]["amount_cents"] == 300
+
+
+def test_price_validation(logged_in):
+    p = make_product(logged_in)
+    for body in ({"amount_cents": -1}, {"amount_cents": 100, "quantity": 0, "unit": "g"},
+                 {"amount_cents": 100, "quantity": 5}, {"amount_cents": 10_000_001},
+                 {"amount_cents": 100, "unit": "x" * 21}):
+        r = logged_in.post(f"/api/products/{p['id']}/prices", json=body, headers=H)
+        assert r.status_code == 422, body
+
+
+def test_edit_and_delete_price(logged_in):
+    p = make_product(logged_in)
+    pr = add_price(logged_in, p["id"], quantity=500, unit="g")
+    u = logged_in.patch(f"/api/prices/{pr['id']}", json={"amount_cents": 199, "on_offer": True}, headers=H).json()
+    assert u["amount_cents"] == 199 and u["on_offer"] is True and u["created_at"] == pr["created_at"]
+    u = logged_in.patch(f"/api/prices/{pr['id']}", json={"clear_quantity": True}, headers=H).json()
+    assert u["quantity"] is None and u["unit"] == "" and u["unit_price"] is None
+    bad = logged_in.patch(f"/api/prices/{pr['id']}", json={"quantity": 2}, headers=H)
+    assert bad.status_code == 422
+    assert logged_in.delete(f"/api/prices/{pr['id']}", headers=H).status_code == 204
+    assert logged_in.get(f"/api/products/{p['id']}").json()["price"] is None
+
+
+def test_list_shows_and_sorts_by_last_price(logged_in):
+    a = make_product(logged_in, name="Dear")
+    b = make_product(logged_in, name="Cheap")
+    make_product(logged_in, name="No price")
+    add_price(logged_in, a["id"], amount_cents=500)
+    add_price(logged_in, b["id"], amount_cents=900, bought_on="2026-01-01")
+    add_price(logged_in, b["id"], amount_cents=100, bought_on="2026-02-01")
+    products = logged_in.get("/api/products", params={"sort": "price"}).json()["products"]
+    assert [x["name"] for x in products] == ["Cheap", "Dear", "No price"]
+    assert products[0]["price"]["last"]["amount_cents"] == 100 and products[2]["price"] is None
+
+
+def test_prices_stay_in_their_household(logged_in, settings):
+    p = make_product(logged_in)
+    pr = add_price(logged_in, p["id"])
+    with db.session(settings.database) as conn:
+        stamp = db.now()
+        hid = conn.execute(
+            "INSERT INTO households (name, created_at, updated_at) VALUES ('Other', ?, ?)", (stamp, stamp)
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO users (household_id, username, password_hash, role, created_at, updated_at)"
+            " VALUES (?, 'other', ?, 'admin', ?, ?)",
+            (hid, auth.hash_password(PASSWORD), stamp, stamp),
+        )
+    other = TestClient(logged_in.app)
+    other.post("/api/session", json={"username": "other", "password": PASSWORD}, headers=H)
+    assert other.patch(f"/api/prices/{pr['id']}", json={"amount_cents": 1}, headers=H).status_code == 404
+    assert other.delete(f"/api/prices/{pr['id']}", headers=H).status_code == 404
+    assert other.post(f"/api/products/{p['id']}/prices", json={"amount_cents": 1}, headers=H).status_code == 404
+
+
+def test_migration_from_the_first_schema(settings):
+    conn = sqlite3.connect(settings.database)
+    conn.executescript(db.MIGRATIONS[0] + "PRAGMA user_version = 1;")
+    conn.close()
+    assert db.migrate(settings.database) == (1, len(db.MIGRATIONS))
+    conn = sqlite3.connect(settings.database)
+    assert conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0] == 0
+    conn.close()

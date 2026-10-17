@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import __version__, auth, config, db, images, off
+from . import __version__, auth, config, db, images, off, prices
 
 log = logging.getLogger("buybutler")
 
@@ -136,12 +136,63 @@ class ProductPatch(BaseModel):
         return None if v is None else _text(v, 50)
 
 
+def _unit(v: str) -> str:
+    return _text(v, 20)
+
+
+class PriceIn(BaseModel):
+    # Cents, up to 100 000.00 in the currency.
+    amount_cents: int = Field(ge=0, le=10_000_000)
+    quantity: float | None = Field(default=None, gt=0, le=1_000_000)
+    unit: str = ""
+    on_offer: bool = False
+    store: str = ""
+    bought_on: date | None = None
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, v: str) -> str:
+        return _unit(v)
+
+    @field_validator("store")
+    @classmethod
+    def _store(cls, v: str) -> str:
+        return _text(v, 100)
+
+    def model_post_init(self, _context) -> None:
+        if self.quantity is not None and not self.unit:
+            raise ValueError("a quantity needs a unit")
+
+
+class PricePatch(BaseModel):
+    amount_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    quantity: float | None = Field(default=None, gt=0, le=1_000_000)
+    clear_quantity: bool = False
+    unit: str | None = None
+    on_offer: bool | None = None
+    store: str | None = None
+    bought_on: date | None = None
+
+    @field_validator("unit")
+    @classmethod
+    def _unit(cls, v: str | None) -> str | None:
+        return None if v is None else _unit(v)
+
+    @field_validator("store")
+    @classmethod
+    def _store(cls, v: str | None) -> str | None:
+        return None if v is None else _text(v, 100)
+
+
 class RatingIn(BaseModel):
     buy_again: bool
     stars: int | None = Field(default=None, ge=1, le=5)
     reason: str = ""
     store: str = ""
     rated_on: date | None = None
+    # Optional: what it cost this time. Stored as a price entry of its own,
+    # with the rating's store and date.
+    price: PriceIn | None = None
 
     @field_validator("reason")
     @classmethod
@@ -209,7 +260,8 @@ LATEST = (
 )
 
 
-def _product(row: sqlite3.Row, latest: sqlite3.Row | None, count: int) -> dict:
+def _product(row: sqlite3.Row, latest: sqlite3.Row | None, count: int,
+             price_rows: list[sqlite3.Row] | None = None) -> dict:
     return {
         "id": row["id"],
         "barcode": row["barcode"],
@@ -223,6 +275,7 @@ def _product(row: sqlite3.Row, latest: sqlite3.Row | None, count: int) -> dict:
         "updated_at": row["updated_at"],
         "rating": _rating(latest) if latest is not None else None,
         "rating_count": count,
+        "price": prices.summary(price_rows or []),
     }
 
 
@@ -241,7 +294,18 @@ def _product_json(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
         (row["id"],),
     ).fetchone()
     count = conn.execute("SELECT COUNT(*) FROM ratings WHERE product_id = ?", (row["id"],)).fetchone()[0]
-    return _product(row, latest, count)
+    price_rows = conn.execute(prices.SELECT + " WHERE pr.product_id = ? " + prices.ORDER, (row["id"],)).fetchall()
+    return _product(row, latest, count, price_rows)
+
+
+def _load_price(conn: sqlite3.Connection, user: auth.User, price_id: int) -> sqlite3.Row:
+    row = conn.execute(
+        prices.SELECT + " JOIN products p ON p.id = pr.product_id WHERE pr.id = ? AND p.household_id = ?",
+        (price_id, user.household_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "price not found")
+    return row
 
 
 def _load_rating(conn: sqlite3.Connection, user: auth.User, rating_id: int) -> sqlite3.Row:
@@ -360,7 +424,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         throttle.succeeded(body.username, client, attempt)
         set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
         log.info("login_succeeded", extra={"user_id": user.id, "client": client})
-        return {"username": user.username, "role": user.role}
+        return {"username": user.username, "role": user.role, "currency": settings.currency}
 
     @app.delete("/api/session", status_code=204)
     def logout(request: Request, response: Response, conn: Conn) -> None:
@@ -371,7 +435,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.get("/api/session")
     def me(user: CurrentUser) -> dict:
-        return {"username": user.username, "role": user.role}
+        return {"username": user.username, "role": user.role, "currency": settings.currency}
 
     @app.post("/api/session/password", status_code=204)
     def change_password(body: PasswordChange, user: CurrentUser, request: Request, response: Response,
@@ -429,7 +493,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         q: str = Query("", max_length=200),
         store: str = Query("", max_length=100),
         category: str = Query("", max_length=100),
-        sort: Literal["recent", "name", "stars"] = "recent",
+        sort: Literal["recent", "name", "stars", "price"] = "recent",
     ) -> dict:
         where = ["p.household_id = ?"]
         args: list = [user.household_id]
@@ -456,9 +520,13 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             "recent": "COALESCE(lr.rated_on, substr(p.created_at, 1, 10)) DESC, COALESCE(lr.created_at, p.created_at) DESC",
             "name": "p.name COLLATE NOCASE ASC",
             "stars": "lr.stars IS NULL, lr.stars DESC, p.name COLLATE NOCASE ASC",
+            # By the last price paid, cheapest first; products without a price last.
+            "price": "last_price IS NULL, last_price ASC, p.name COLLATE NOCASE ASC",
         }[sort]
         rows = conn.execute(
-            "SELECT p.*, lr.id AS lr_id, (SELECT COUNT(*) FROM ratings c WHERE c.product_id = p.id) AS rating_count"
+            "SELECT p.*, lr.id AS lr_id, (SELECT COUNT(*) FROM ratings c WHERE c.product_id = p.id) AS rating_count,"
+            " (SELECT pr.amount_cents FROM prices pr WHERE pr.product_id = p.id"
+            "  ORDER BY pr.bought_on DESC, pr.created_at DESC, pr.id DESC LIMIT 1) AS last_price"
             f" FROM products p LEFT JOIN ratings lr ON lr.id = {LATEST}"
             f" WHERE {' AND '.join(where)} ORDER BY {order} LIMIT 1000",
             args,
@@ -469,7 +537,17 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             marks = ",".join("?" * len(ids))
             for r in conn.execute(RATING_SELECT + f" WHERE r.id IN ({marks})", ids):
                 latest[r["id"]] = r
-        return {"products": [_product(r, latest.get(r["lr_id"]), r["rating_count"]) for r in rows]}
+        by_product: dict[int, list[sqlite3.Row]] = {}
+        product_ids = [r["id"] for r in rows if r["last_price"] is not None]
+        if product_ids:
+            marks = ",".join("?" * len(product_ids))
+            for r in conn.execute(prices.SELECT + f" WHERE pr.product_id IN ({marks}) " + prices.ORDER, product_ids):
+                by_product.setdefault(r["product_id"], []).append(r)
+        return {
+            "products": [
+                _product(r, latest.get(r["lr_id"]), r["rating_count"], by_product.get(r["id"])) for r in rows
+            ]
+        }
 
     @app.get("/api/facets")
     def facets(user: CurrentUser, conn: Conn) -> dict:
@@ -547,6 +625,10 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     def get_product(product_id: int, user: CurrentUser, conn: Conn) -> dict:
         row = _load_product(conn, user, product_id)
         data = _product_json(conn, row)
+        data["prices"] = [
+            prices.to_json(r)
+            for r in conn.execute(prices.SELECT + " WHERE pr.product_id = ? " + prices.ORDER, (product_id,))
+        ]
         data["ratings"] = [
             _rating(r)
             for r in conn.execute(
@@ -640,7 +722,73 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             (product_id, user.id, int(body.buy_again), body.stars, body.reason, body.store, rated_on, stamp, stamp),
         ).lastrowid
         log.info("rating_created", extra={"product_id": product_id, "rating_id": rating_id})
+        if body.price is not None:
+            price = body.price.model_copy(update={"store": body.price.store or body.store,
+                                                  "bought_on": body.price.bought_on or date.fromisoformat(rated_on)})
+            insert_price(conn, user, product_id, price, rating_id)
         return _rating(_load_rating(conn, user, rating_id))
+
+    # ---- prices ------------------------------------------------------------
+
+    def insert_price(conn: sqlite3.Connection, user: auth.User, product_id: int, body: PriceIn,
+                     rating_id: int | None = None) -> int:
+        stamp = db.now()
+        price_id = conn.execute(
+            "INSERT INTO prices (product_id, user_id, rating_id, amount_cents, quantity, unit, on_offer, store,"
+            " bought_on, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (product_id, user.id, rating_id, body.amount_cents, body.quantity, body.unit, int(body.on_offer),
+             body.store, (body.bought_on or date.today()).isoformat(), stamp, stamp),
+        ).lastrowid
+        log.info("price_created", extra={"product_id": product_id, "price_id": price_id})
+        return price_id
+
+    @app.post("/api/products/{product_id}/prices", status_code=201)
+    def create_price(product_id: int, body: PriceIn, user: CurrentUser, conn: Conn) -> dict:
+        _load_product(conn, user, product_id)
+        return prices.to_json(_load_price(conn, user, insert_price(conn, user, product_id, body)))
+
+    @app.get("/api/products/{product_id}/prices")
+    def list_prices(product_id: int, user: CurrentUser, conn: Conn) -> dict:
+        _load_product(conn, user, product_id)
+        rows = conn.execute(prices.SELECT + " WHERE pr.product_id = ? " + prices.ORDER, (product_id,)).fetchall()
+        return {"prices": [prices.to_json(r) for r in rows]}
+
+    @app.patch("/api/prices/{price_id}")
+    def update_price(price_id: int, body: PricePatch, user: CurrentUser, conn: Conn) -> dict:
+        row = _load_price(conn, user, price_id)
+        changes: dict = {}
+        if body.amount_cents is not None:
+            changes["amount_cents"] = body.amount_cents
+        if body.clear_quantity:
+            changes["quantity"] = None
+            changes["unit"] = ""
+        else:
+            if body.quantity is not None:
+                changes["quantity"] = body.quantity
+            if body.unit is not None:
+                changes["unit"] = body.unit
+        if body.on_offer is not None:
+            changes["on_offer"] = int(body.on_offer)
+        if body.store is not None:
+            changes["store"] = body.store
+        if body.bought_on is not None:
+            changes["bought_on"] = body.bought_on.isoformat()
+        quantity = changes.get("quantity", row["quantity"])
+        unit = changes.get("unit", row["unit"])
+        if quantity is not None and not unit:
+            raise HTTPException(422, "a quantity needs a unit")
+        if changes:
+            columns = ", ".join(f"{k} = ?" for k in changes)
+            conn.execute(f"UPDATE prices SET {columns}, updated_at = ? WHERE id = ?",
+                         [*changes.values(), db.now(), price_id])
+            log.info("price_updated", extra={"price_id": price_id})
+        return prices.to_json(_load_price(conn, user, price_id))
+
+    @app.delete("/api/prices/{price_id}", status_code=204)
+    def delete_price(price_id: int, user: CurrentUser, conn: Conn) -> None:
+        _load_price(conn, user, price_id)
+        conn.execute("DELETE FROM prices WHERE id = ?", (price_id,))
+        log.info("price_deleted", extra={"price_id": price_id})
 
     @app.patch("/api/ratings/{rating_id}")
     def update_rating(rating_id: int, body: RatingPatch, user: CurrentUser, conn: Conn) -> dict:

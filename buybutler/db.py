@@ -81,6 +81,24 @@ MIGRATIONS: list[str] = [
         fetched_at  TEXT NOT NULL
     );
     """,
+    # 2: purchase prices with an optional quantity and an offer flag.
+    """
+    CREATE TABLE prices (
+        id            INTEGER PRIMARY KEY,
+        product_id    INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        user_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        rating_id     INTEGER REFERENCES ratings(id) ON DELETE SET NULL,
+        amount_cents  INTEGER NOT NULL CHECK (amount_cents >= 0),
+        quantity      REAL CHECK (quantity IS NULL OR quantity > 0),
+        unit          TEXT NOT NULL DEFAULT '',
+        on_offer      INTEGER NOT NULL DEFAULT 0 CHECK (on_offer IN (0, 1)),
+        store         TEXT NOT NULL DEFAULT '',
+        bought_on     TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    );
+    CREATE INDEX prices_product ON prices(product_id, bought_on, created_at);
+    """,
 ]
 
 

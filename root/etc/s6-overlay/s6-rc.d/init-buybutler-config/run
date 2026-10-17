@@ -26,6 +26,9 @@ esac
 [[ -z ${BUYBUTLER_OFF_LANGUAGE} || ${BUYBUTLER_OFF_LANGUAGE} =~ ^[A-Za-z]{2}$ ]] \
     || fail "BUYBUTLER_OFF_LANGUAGE must be a two-letter language code, got '${BUYBUTLER_OFF_LANGUAGE}'"
 
+[[ -z ${BUYBUTLER_CURRENCY} || ${BUYBUTLER_CURRENCY} =~ ^[A-Za-z]{3}$ ]] \
+    || fail "BUYBUTLER_CURRENCY must be a three-letter currency code, got '${BUYBUTLER_CURRENCY}'"
+
 case "${BUYBUTLER_LOG_LEVEL^^}" in
     "" | DEBUG | INFO | WARNING | ERROR) ;;
     *) fail "BUYBUTLER_LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR, got '${BUYBUTLER_LOG_LEVEL}'" ;;

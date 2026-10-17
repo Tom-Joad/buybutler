@@ -10,7 +10,7 @@
   <Project>https://github.com/Tom-Joad/buybutler</Project>
   <Overview>
     Remember which groceries to buy again and which not, with a reason, 1 to 5 stars, the store,
-    the date and a photo. Scan the barcode with the phone camera; product names and pictures come
+    the date, a photo and optionally the price paid. Scan the barcode with the phone camera; product names and pictures come
     from Open Food Facts. Every entry keeps the time it was made and last changed.&#xD;
     &#xD;
     After the first start, create a user in the container's console: buybutler user add NAME.&#xD;
@@ -28,6 +28,7 @@
   <Config Name="UMASK" Target="UMASK" Default="002" Mode="" Description="002: new files are writable for the users group" Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
   <Config Name="TZ" Target="TZ" Default="Europe/Berlin" Mode="" Description="Time zone: decides the date a rating gets by default, and the log" Type="Variable" Display="always" Required="false" Mask="false">Europe/Berlin</Config>
   <Config Name="Product language" Target="BUYBUTLER_OFF_LANGUAGE" Default="de" Mode="" Description="Language of product names from Open Food Facts (two letters)" Type="Variable" Display="always" Required="false" Mask="false">de</Config>
+  <Config Name="Currency" Target="BUYBUTLER_CURRENCY" Default="EUR" Mode="" Description="Currency of all prices, a three-letter code such as EUR or CHF" Type="Variable" Display="always" Required="false" Mask="false">EUR</Config>
   <Config Name="Open Food Facts lookup" Target="BUYBUTLER_OFF_LOOKUP" Default="true" Mode="" Description="false: never send barcodes to Open Food Facts; products are entered by hand" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="Session days" Target="BUYBUTLER_SESSION_DAYS" Default="90" Mode="" Description="Days a login stays valid without being used" Type="Variable" Display="advanced" Required="false" Mask="false">90</Config>
   <Config Name="Max upload MB" Target="BUYBUTLER_MAX_UPLOAD_MB" Default="10" Mode="" Description="Largest accepted picture" Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>

@@ -72,6 +72,8 @@ def test_backup(data, monkeypatch, capsys):
         ("BUYBUTLER_OFF_LANGUAGE", "deu"),
         ("BUYBUTLER_LOG_LEVEL", "LOUD"),
         ("BUYBUTLER_MAX_UPLOAD_MB", "1000"),
+        ("BUYBUTLER_CURRENCY", "EURO"),
+        ("BUYBUTLER_CURRENCY", "€"),
     ],
 )
 def test_bad_settings(monkeypatch, name, value):
