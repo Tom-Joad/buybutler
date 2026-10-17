@@ -59,6 +59,24 @@ The appdata folder holds the database and all photos. The Appdata Backup
 plugin stops the container before copying, which gives a consistent copy.
 Without it, run `buybutler backup` in the console first.
 
+## Icon
+
+The template names the icon `unraid/icon.png` of this repository. The
+repository is private, so Unraid can't download it; copy it to the flash
+drive once instead. Unraid looks there before it tries the URL:
+
+1. Download [`unraid/icon.png`](icon.png) from the repository on
+   GitHub (logged in).
+2. Save it as `/boot/config/plugins/dockerMan/images/Buybutler-icon.png`, for
+   example over the `flash` share:
+   `\\<SERVER>\flash\config\plugins\dockerMan\images\Buybutler-icon.png`.
+   The part before `-icon.png` is the container's name in Unraid, with the
+   same capitals; rename the file if you named the container differently.
+3. Reload the Docker tab.
+
+The copy survives reboots and updates. If the container was renamed, copy
+the file under the new name.
+
 ## Template changes
 
 The template is not updated automatically (private repository). When
