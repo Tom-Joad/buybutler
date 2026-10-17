@@ -84,8 +84,8 @@ A template and its own guide: [`unraid/README-UNRAID.md`](unraid/README-UNRAID.m
 ### First start
 
 1. Start the container. The log says `no_user_yet` until a user exists.
-2. Create the first user; it becomes the admin. The password needs at least
-   10 characters and is asked twice:
+2. Create the first user; it becomes the admin and gets a list "Home". The
+   password needs at least 10 characters and is asked twice:
 
    ```bash
    docker exec -it buybutler buybutler user add <NAME>
@@ -93,6 +93,8 @@ A template and its own guide: [`unraid/README-UNRAID.md`](unraid/README-UNRAID.m
 
 3. Open Buybutler through your reverse proxy with HTTPS and log in. On the
    phone, "Add to Home Screen" installs it like an app.
+4. More users: **Account → Users** (admins only). Share a list with them
+   under **Manage → <list> → Members**.
 
 **The camera needs HTTPS.** Browsers only allow camera access on HTTPS pages
 (and on `localhost`). Over plain `http://<server>:8080` everything works
@@ -135,15 +137,39 @@ container's user, so files keep the `PUID`/`PGID` owner.
 
 | Command | Does |
 |---|---|
-| `user add <NAME>` | Add a user. The first one becomes admin |
+| `user add <NAME> [--admin]` | Add a user. The first one becomes admin and gets the list "Home"; later ones start without a list |
 | `user passwd <NAME>` | Set a new password; that user's sessions end |
 | `user list` | List users with role and creation time |
-| `user delete <NAME>` | Delete a user; their ratings stay |
+| `user delete <NAME>` | Delete a user. Lists only they use are deleted with them; a shared list they alone own needs another owner first. Their ratings elsewhere stay, without a name |
 | `backup` | Write a consistent copy of the database to `/config/backups/` |
 
-Several users share one household today; managing users and households in
-the interface comes later. The database already records who made each
-rating.
+The same is possible in the interface under **Account → Users**, for admins.
+
+## Lists and sharing
+
+Everything lives in a **list**: products, ratings, prices. Each user can
+keep several (Home, Office kitchen …) and switch between them in the bar
+under the top bar; the phone remembers the list in use. The same barcode can
+be in several lists, each with its own verdicts.
+
+A list is shared by name: **Manage → <list> → Members**, type the user name,
+choose a role. An unknown name is reported.
+
+| Role | Can |
+|---|---|
+| Owner | everything, including members, renaming and deleting the list; every list keeps at least one owner |
+| Editor | add and change products, ratings and prices |
+| Viewer | read only |
+
+Members can leave a list. Deleting a list removes everything in it, for all
+members, after its name is typed to confirm. Every rating shows who made it.
+
+Users are created by admins (**Account → Users** or the `user add`
+command); a new user creates their own lists or is added to one.
+
+**Upgrading from 0.6:** the first start migrates by itself. The household
+becomes the list "Home"; the admin becomes its owner, every other user an
+editor.
 
 ## Backups
 

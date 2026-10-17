@@ -26,7 +26,10 @@ run:
 buybutler user add <NAME>
 ```
 
-The password is asked twice and needs at least 10 characters.
+The password is asked twice and needs at least 10 characters. This first
+user is the admin and gets the list "Home"; further users are added in the
+interface under **Account → Users** and get access to a list under
+**Manage → <list> → Members**.
 
 ## Reverse proxy
 

@@ -14,12 +14,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import __version__, auth, config, db, images, off, prices
+from . import __version__, auth, config, db, images, lists, off, prices
 
 log = logging.getLogger("buybutler")
 
 STATIC_DIR = Path(__file__).parent / "static"
 COOKIE = "buybutler_session"
+# The list the phone works in; sent with every request (see list_dep).
+LIST_HEADER = "x-buybutler-list"
 # Every request that changes something must carry this header. A form or
 # link on another site can't set it, which is what stops cross-site
 # requests; the SameSite cookie is the second line.
@@ -55,6 +57,50 @@ def _text(value: str | None, limit: int) -> str:
 
 class Login(BaseModel):
     username: str = Field(max_length=auth.USERNAME_MAX)
+    password: str = Field(max_length=1024)
+
+
+def _name(v: str, what: str = "name") -> str:
+    v = _text(v, 100)
+    if not v:
+        raise ValueError(f"the {what} is required")
+    return v
+
+
+class ListIn(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        return _name(v)
+
+
+class ListDelete(BaseModel):
+    # The list's name, typed by the user to confirm.
+    confirm_name: str = Field(max_length=200)
+
+
+class MemberIn(BaseModel):
+    username: str = Field(max_length=auth.USERNAME_MAX)
+    role: Literal["owner", "editor", "viewer"] = "editor"
+
+
+class MemberPatch(BaseModel):
+    role: Literal["owner", "editor", "viewer"]
+
+
+class UserIn(BaseModel):
+    username: str = Field(max_length=auth.USERNAME_MAX)
+    password: str = Field(max_length=1024)
+    role: Literal["admin", "member"] = "member"
+
+
+class UserPatch(BaseModel):
+    role: Literal["admin", "member"]
+
+
+class PasswordSet(BaseModel):
     password: str = Field(max_length=1024)
 
 
@@ -283,15 +329,41 @@ def _product(row: sqlite3.Row, latest: sqlite3.Row | None, count: int,
         "rating": _rating(latest) if latest is not None else None,
         "rating_count": count,
         "price": prices.summary(price_rows or []),
+        "list_id": row["list_id"],
+        # The caller's role in the product's list decides what the page offers.
+        "role": row["role"] if "role" in row.keys() else None,
     }
 
 
-def _load_product(conn: sqlite3.Connection, user: auth.User, product_id: int) -> sqlite3.Row:
+ROLES = ("owner", "editor", "viewer")
+WRITE_ROLES = ("owner", "editor")
+
+
+def _check_write(role: str) -> None:
+    if role not in WRITE_ROLES:
+        raise HTTPException(403, "this list is read only for you")
+
+
+def _list_role(conn: sqlite3.Connection, user: auth.User, list_id: int) -> str | None:
     row = conn.execute(
-        "SELECT * FROM products WHERE id = ? AND household_id = ?", (product_id, user.household_id)
+        "SELECT role FROM list_members WHERE list_id = ? AND user_id = ?", (list_id, user.id)
+    ).fetchone()
+    return row["role"] if row else None
+
+
+# Every record is reached through its product, and every product through a
+# list the caller is a member of; the role comes along for write checks.
+MEMBER_JOIN = " JOIN list_members m ON m.list_id = p.list_id AND m.user_id = ?"
+
+
+def _load_product(conn: sqlite3.Connection, user: auth.User, product_id: int, write: bool = False) -> sqlite3.Row:
+    row = conn.execute(
+        "SELECT p.*, m.role FROM products p" + MEMBER_JOIN + " WHERE p.id = ?", (user.id, product_id)
     ).fetchone()
     if row is None:
         raise HTTPException(404, "product not found")
+    if write:
+        _check_write(row["role"])
     return row
 
 
@@ -305,13 +377,16 @@ def _product_json(conn: sqlite3.Connection, row: sqlite3.Row) -> dict:
     return _product(row, latest, count, price_rows)
 
 
-def _load_price(conn: sqlite3.Connection, user: auth.User, price_id: int) -> sqlite3.Row:
+def _load_price(conn: sqlite3.Connection, user: auth.User, price_id: int, write: bool = False) -> sqlite3.Row:
     row = conn.execute(
-        prices.SELECT + " JOIN products p ON p.id = pr.product_id WHERE pr.id = ? AND p.household_id = ?",
-        (price_id, user.household_id),
+        prices.SELECT.replace("SELECT pr.*,", "SELECT pr.*, m.role,")
+        + " JOIN products p ON p.id = pr.product_id" + MEMBER_JOIN + " WHERE pr.id = ?",
+        (user.id, price_id),
     ).fetchone()
     if row is None:
         raise HTTPException(404, "price not found")
+    if write:
+        _check_write(row["role"])
     return row
 
 
@@ -333,28 +408,31 @@ def _replayed(conn: sqlite3.Connection, user: auth.User, table: str, client_id: 
     """
     if not client_id:
         return None
-    household = {
-        "products": "SELECT id, household_id FROM products WHERE client_id = ?",
-        "ratings": "SELECT r.id, p.household_id FROM ratings r JOIN products p ON p.id = r.product_id"
+    owner = {
+        "products": "SELECT id, list_id FROM products WHERE client_id = ?",
+        "ratings": "SELECT r.id, p.list_id FROM ratings r JOIN products p ON p.id = r.product_id"
                    " WHERE r.client_id = ?",
-        "prices": "SELECT pr.id, p.household_id FROM prices pr JOIN products p ON p.id = pr.product_id"
+        "prices": "SELECT pr.id, p.list_id FROM prices pr JOIN products p ON p.id = pr.product_id"
                   " WHERE pr.client_id = ?",
     }[table]
-    row = conn.execute(household, (client_id,)).fetchone()
+    row = conn.execute(owner, (client_id,)).fetchone()
     if row is None:
         return None
-    if row["household_id"] != user.household_id:
+    if _list_role(conn, user, row["list_id"]) is None:
         raise HTTPException(409, "this client id is in use")
     return row["id"]
 
 
-def _load_rating(conn: sqlite3.Connection, user: auth.User, rating_id: int) -> sqlite3.Row:
+def _load_rating(conn: sqlite3.Connection, user: auth.User, rating_id: int, write: bool = False) -> sqlite3.Row:
     row = conn.execute(
-        RATING_SELECT + " JOIN products p ON p.id = r.product_id WHERE r.id = ? AND p.household_id = ?",
-        (rating_id, user.household_id),
+        RATING_SELECT.replace("SELECT r.*,", "SELECT r.*, m.role,")
+        + " JOIN products p ON p.id = r.product_id" + MEMBER_JOIN + " WHERE r.id = ?",
+        (user.id, rating_id),
     ).fetchone()
     if row is None:
         raise HTTPException(404, "rating not found")
+    if write:
+        _check_write(row["role"])
     return row
 
 
@@ -440,6 +518,25 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     CurrentUser = Annotated[auth.User, Depends(user_dep)]
 
+    def list_dep(request: Request, user: CurrentUser, conn: Conn) -> tuple[int, str]:
+        """The list the phone works in (header), and the caller's role there."""
+        raw = request.headers.get(LIST_HEADER, "").strip()
+        if raw:
+            if not raw.isdigit():
+                raise HTTPException(422, "the list id is a number")
+            role = _list_role(conn, user, int(raw))
+            if role is None:
+                raise HTTPException(404, "list not found")
+            return int(raw), role
+        row = conn.execute(
+            "SELECT list_id, role FROM list_members WHERE user_id = ? ORDER BY list_id LIMIT 1", (user.id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(409, "no list yet: create one first")
+        return row["list_id"], row["role"]
+
+    CurrentList = Annotated[tuple[int, str], Depends(list_dep)]
+
     def client_of(request: Request) -> str:
         return request.client.host if request.client else "unknown"
 
@@ -498,15 +595,192 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
         log.info("password_changed", extra={"user_id": user.id})
 
+    # ---- lists ---------------------------------------------------------------
+
+    def list_json(conn: sqlite3.Connection, list_id: int, role: str) -> dict:
+        row = conn.execute("SELECT * FROM lists WHERE id = ?", (list_id,)).fetchone()
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "role": role,
+            "members": conn.execute(
+                "SELECT COUNT(*) FROM list_members WHERE list_id = ?", (list_id,)
+            ).fetchone()[0],
+            "products": conn.execute("SELECT COUNT(*) FROM products WHERE list_id = ?", (list_id,)).fetchone()[0],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def member_role(conn: sqlite3.Connection, user: auth.User, list_id: int, owner: bool = False) -> str:
+        role = _list_role(conn, user, list_id)
+        if role is None:
+            raise HTTPException(404, "list not found")
+        if owner and role != "owner":
+            raise HTTPException(403, "only an owner of the list can do that")
+        return role
+
+    @app.get("/api/lists")
+    def get_lists(user: CurrentUser, conn: Conn) -> dict:
+        rows = conn.execute(
+            "SELECT l.id, m.role FROM lists l JOIN list_members m ON m.list_id = l.id AND m.user_id = ?"
+            " ORDER BY l.name COLLATE NOCASE, l.id",
+            (user.id,),
+        ).fetchall()
+        return {"lists": [list_json(conn, r["id"], r["role"]) for r in rows]}
+
+    @app.post("/api/lists", status_code=201)
+    def create_list(body: ListIn, user: CurrentUser, conn: Conn) -> dict:
+        list_id = auth.create_list(conn, user.id, body.name)
+        log.info("list_created", extra={"list_id": list_id})
+        return list_json(conn, list_id, "owner")
+
+    @app.patch("/api/lists/{list_id}")
+    def rename_list(list_id: int, body: ListIn, user: CurrentUser, conn: Conn) -> dict:
+        member_role(conn, user, list_id, owner=True)
+        conn.execute("UPDATE lists SET name = ?, updated_at = ? WHERE id = ?", (body.name, db.now(), list_id))
+        return list_json(conn, list_id, "owner")
+
+    @app.delete("/api/lists/{list_id}", status_code=204)
+    def delete_list(list_id: int, body: ListDelete, user: CurrentUser, conn: Conn) -> None:
+        member_role(conn, user, list_id, owner=True)
+        name = conn.execute("SELECT name FROM lists WHERE id = ?", (list_id,)).fetchone()[0]
+        if body.confirm_name.strip() != name:
+            raise HTTPException(400, "type the list's name exactly to delete it")
+        files = lists.delete_list(conn, list_id)
+        conn.commit()
+        lists.remove_files(settings.images, files)
+        log.info("list_deleted", extra={"list_id": list_id, "pictures": len(files)})
+
+    @app.get("/api/lists/{list_id}/members")
+    def get_members(list_id: int, user: CurrentUser, conn: Conn) -> dict:
+        member_role(conn, user, list_id)
+        rows = conn.execute(
+            "SELECT u.id, u.username, m.role, m.created_at, m.updated_at FROM list_members m"
+            " JOIN users u ON u.id = m.user_id WHERE m.list_id = ?"
+            " ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 ELSE 2 END, u.username COLLATE NOCASE",
+            (list_id,),
+        ).fetchall()
+        return {"members": [
+            {"user_id": r["id"], "username": r["username"], "role": r["role"], "you": r["id"] == user.id,
+             "created_at": r["created_at"], "updated_at": r["updated_at"]}
+            for r in rows
+        ]}
+
+    @app.post("/api/lists/{list_id}/members", status_code=201)
+    def add_member(list_id: int, body: MemberIn, user: CurrentUser, conn: Conn) -> dict:
+        member_role(conn, user, list_id, owner=True)
+        other = conn.execute("SELECT id FROM users WHERE username = ?", (body.username.strip(),)).fetchone()
+        if other is None:
+            raise HTTPException(404, "there is no user with this name")
+        if conn.execute(
+            "SELECT 1 FROM list_members WHERE list_id = ? AND user_id = ?", (list_id, other["id"])
+        ).fetchone():
+            raise HTTPException(409, "this user is a member already")
+        stamp = db.now()
+        conn.execute(
+            "INSERT INTO list_members (list_id, user_id, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (list_id, other["id"], body.role, stamp, stamp),
+        )
+        log.info("member_added", extra={"list_id": list_id, "user_id": other["id"], "role": body.role})
+        return get_members(list_id, user, conn)
+
+    @app.patch("/api/lists/{list_id}/members/{user_id}")
+    def change_member(list_id: int, user_id: int, body: MemberPatch, user: CurrentUser, conn: Conn) -> dict:
+        member_role(conn, user, list_id, owner=True)
+        try:
+            lists.set_member_role(conn, list_id, user_id, body.role)
+        except lists.ListError as exc:
+            raise HTTPException(409, str(exc)) from None
+        log.info("member_changed", extra={"list_id": list_id, "user_id": user_id, "role": body.role})
+        return get_members(list_id, user, conn)
+
+    @app.delete("/api/lists/{list_id}/members/{user_id}", status_code=204)
+    def remove_member(list_id: int, user_id: int, user: CurrentUser, conn: Conn) -> None:
+        # Owners remove anyone; everyone may leave on their own.
+        member_role(conn, user, list_id, owner=user_id != user.id)
+        try:
+            lists.remove_member(conn, list_id, user_id)
+        except lists.ListError as exc:
+            raise HTTPException(409, str(exc)) from None
+        log.info("member_removed", extra={"list_id": list_id, "user_id": user_id})
+
+    # ---- users (admins) ------------------------------------------------------
+
+    def admin_only(user: auth.User) -> None:
+        if user.role != "admin":
+            raise HTTPException(403, "only an admin can manage users")
+
+    def users_json(conn: sqlite3.Connection) -> dict:
+        rows = conn.execute(
+            "SELECT u.id, u.username, u.role, u.created_at, u.updated_at,"
+            " (SELECT COUNT(*) FROM list_members m WHERE m.user_id = u.id) AS lists"
+            " FROM users u ORDER BY u.username COLLATE NOCASE"
+        ).fetchall()
+        return {"users": [dict(r) for r in rows]}
+
+    @app.get("/api/users")
+    def get_users(user: CurrentUser, conn: Conn) -> dict:
+        admin_only(user)
+        return users_json(conn)
+
+    @app.post("/api/users", status_code=201)
+    def add_user(body: UserIn, user: CurrentUser, conn: Conn) -> dict:
+        admin_only(user)
+        try:
+            created = auth.create_user(conn, body.username, body.password, body.role)
+        except auth.AuthError as exc:
+            raise HTTPException(400, str(exc)) from None
+        log.info("user_created", extra={"user_id": created.id, "role": created.role})
+        return users_json(conn)
+
+    @app.patch("/api/users/{user_id}")
+    def change_user(user_id: int, body: UserPatch, user: CurrentUser, conn: Conn) -> dict:
+        admin_only(user)
+        row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "user not found")
+        if row["role"] == "admin" and body.role != "admin" and conn.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin'"
+        ).fetchone()[0] == 1:
+            raise HTTPException(409, "the last admin can't lose the role")
+        conn.execute("UPDATE users SET role = ?, updated_at = ? WHERE id = ?", (body.role, db.now(), user_id))
+        log.info("user_changed", extra={"user_id": user_id, "role": body.role})
+        return users_json(conn)
+
+    @app.post("/api/users/{user_id}/password", status_code=204)
+    def reset_password(user_id: int, body: PasswordSet, user: CurrentUser, conn: Conn) -> None:
+        admin_only(user)
+        if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
+            raise HTTPException(404, "user not found")
+        try:
+            auth.set_password(conn, user_id, body.password)
+        except auth.AuthError as exc:
+            raise HTTPException(400, str(exc)) from None
+        log.info("password_reset", extra={"user_id": user_id})
+
+    @app.delete("/api/users/{user_id}", status_code=204)
+    def delete_user(user_id: int, user: CurrentUser, conn: Conn) -> None:
+        admin_only(user)
+        if user_id == user.id:
+            raise HTTPException(409, "you can't delete yourself")
+        try:
+            files = lists.delete_user(conn, user_id)
+        except lists.ListError as exc:
+            raise HTTPException(409 if "no such" not in str(exc) else 404, str(exc)) from None
+        conn.commit()
+        lists.remove_files(settings.images, files)
+        log.info("user_deleted", extra={"user_id": user_id})
+
     # ---- lookup ------------------------------------------------------------
 
     @app.get("/api/lookup")
-    def lookup(user: CurrentUser, conn: Conn, barcode: str = Query(max_length=14)) -> dict:
+    def lookup(user: CurrentUser, current: CurrentList, conn: Conn, barcode: str = Query(max_length=14)) -> dict:
         barcode = barcode.strip()
         if not off.valid_barcode(barcode):
             raise HTTPException(422, "a barcode has 8 to 14 digits")
         row = conn.execute(
-            "SELECT * FROM products WHERE household_id = ? AND barcode = ?", (user.household_id, barcode)
+            "SELECT p.*, ? AS role FROM products p WHERE list_id = ? AND barcode = ?",
+            (current[1], current[0], barcode),
         ).fetchone()
         if row is not None:
             return {"product": _product_json(conn, row), "suggestion": None, "lookup": "known"}
@@ -528,6 +802,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     @app.get("/api/products")
     def list_products(
         user: CurrentUser,
+        current: CurrentList,
         conn: Conn,
         verdict: Literal["all", "buy", "skip", "unrated"] = "all",
         q: str = Query("", max_length=200),
@@ -535,8 +810,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         category: str = Query("", max_length=100),
         sort: Literal["recent", "name", "stars", "price"] = "recent",
     ) -> dict:
-        where = ["p.household_id = ?"]
-        args: list = [user.household_id]
+        where = ["p.list_id = ?"]
+        args: list = [current[0]]
         if verdict == "buy":
             where.append("lr.buy_again = 1")
         elif verdict == "skip":
@@ -564,12 +839,13 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             "price": "last_price IS NULL, last_price ASC, p.name COLLATE NOCASE ASC",
         }[sort]
         rows = conn.execute(
-            "SELECT p.*, lr.id AS lr_id, (SELECT COUNT(*) FROM ratings c WHERE c.product_id = p.id) AS rating_count,"
+            "SELECT p.*, ? AS role, lr.id AS lr_id,"
+            " (SELECT COUNT(*) FROM ratings c WHERE c.product_id = p.id) AS rating_count,"
             " (SELECT pr.amount_cents FROM prices pr WHERE pr.product_id = p.id"
             "  ORDER BY pr.bought_on DESC, pr.created_at DESC, pr.id DESC LIMIT 1) AS last_price"
             f" FROM products p LEFT JOIN ratings lr ON lr.id = {LATEST}"
             f" WHERE {' AND '.join(where)} ORDER BY {order} LIMIT 1000",
-            args,
+            [current[1], *args],
         ).fetchall()
         ids = [r["lr_id"] for r in rows if r["lr_id"] is not None]
         latest: dict[int, sqlite3.Row] = {}
@@ -590,22 +866,22 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         }
 
     @app.get("/api/facets")
-    def facets(user: CurrentUser, conn: Conn) -> dict:
+    def facets(user: CurrentUser, current: CurrentList, conn: Conn) -> dict:
         """Stores and categories used so far, for filters and suggestions."""
         stores = [
             r[0]
             for r in conn.execute(
                 "SELECT DISTINCT r.store FROM ratings r JOIN products p ON p.id = r.product_id"
-                " WHERE p.household_id = ? AND r.store != '' ORDER BY r.store COLLATE NOCASE",
-                (user.household_id,),
+                " WHERE p.list_id = ? AND r.store != '' ORDER BY r.store COLLATE NOCASE",
+                (current[0],),
             )
         ]
         categories = [
             r[0]
             for r in conn.execute(
-                "SELECT DISTINCT category FROM products WHERE household_id = ? AND category != ''"
+                "SELECT DISTINCT category FROM products WHERE list_id = ? AND category != ''"
                 " ORDER BY category COLLATE NOCASE",
-                (user.household_id,),
+                (current[0],),
             )
         ]
         return {"stores": stores, "categories": categories}
@@ -635,14 +911,16 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         images.delete(settings.images, "products", name)
 
     @app.post("/api/products", status_code=201)
-    def create_product(body: ProductIn, user: CurrentUser, conn: Conn, tasks: BackgroundTasks,
-                       response: Response) -> dict:
+    def create_product(body: ProductIn, user: CurrentUser, current: CurrentList, conn: Conn,
+                       tasks: BackgroundTasks, response: Response) -> dict:
         existing = _replayed(conn, user, "products", body.client_id)
         if existing is not None:
             response.status_code = 200
             return _product_json(conn, _load_product(conn, user, existing))
+        list_id, role = current
+        _check_write(role)
         if body.barcode and conn.execute(
-            "SELECT 1 FROM products WHERE household_id = ? AND barcode = ?", (user.household_id, body.barcode)
+            "SELECT 1 FROM products WHERE list_id = ? AND barcode = ?", (list_id, body.barcode)
         ).fetchone():
             raise HTTPException(409, "a product with this barcode exists already")
         image_url = None
@@ -656,9 +934,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         stamp = db.now()
         try:
             product_id = conn.execute(
-                "INSERT INTO products (household_id, barcode, name, brand, category, quantity, image, source,"
+                "INSERT INTO products (list_id, barcode, name, brand, category, quantity, image, source,"
                 " created_by, created_at, updated_at, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (user.household_id, body.barcode, body.name, body.brand, body.category, body.quantity, None,
+                (list_id, body.barcode, body.name, body.brand, body.category, body.quantity, None,
                  source, user.id, stamp, stamp, body.client_id),
             ).lastrowid
         except sqlite3.IntegrityError:
@@ -692,11 +970,11 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.patch("/api/products/{product_id}")
     def update_product(product_id: int, body: ProductPatch, user: CurrentUser, conn: Conn) -> dict:
-        _load_product(conn, user, product_id)
+        product = _load_product(conn, user, product_id, write=True)
         changes = body.model_dump(exclude_unset=True)
         if "barcode" in changes and changes["barcode"] and conn.execute(
-            "SELECT 1 FROM products WHERE household_id = ? AND barcode = ? AND id != ?",
-            (user.household_id, changes["barcode"], product_id),
+            "SELECT 1 FROM products WHERE list_id = ? AND barcode = ? AND id != ?",
+            (product["list_id"], changes["barcode"], product_id),
         ).fetchone():
             raise HTTPException(409, "a product with this barcode exists already")
         changes = {k: v for k, v in changes.items() if v is not None or k == "barcode"}
@@ -711,7 +989,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.delete("/api/products/{product_id}", status_code=204)
     def delete_product(product_id: int, user: CurrentUser, conn: Conn) -> None:
-        row = _load_product(conn, user, product_id)
+        row = _load_product(conn, user, product_id, write=True)
         photos = [r[0] for r in conn.execute("SELECT photo FROM ratings WHERE product_id = ?", (product_id,))]
         conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
         conn.commit()
@@ -741,11 +1019,11 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         # Checked before the upload is read, so nobody without a session can
         # make the server buffer a picture.
         with db.session(settings.database) as conn:
-            _load_product(conn, session_of(request, conn), product_id)
+            _load_product(conn, session_of(request, conn), product_id, write=True)
         data = await read_picture(request)
         with db.session(settings.database) as conn:
             user = session_of(request, conn)
-            row = _load_product(conn, user, product_id)
+            row = _load_product(conn, user, product_id, write=True)
             name = images.save(settings.images, "products", data)
             conn.execute("UPDATE products SET image = ?, updated_at = ? WHERE id = ?", (name, db.now(), product_id))
             result = _product_json(conn, _load_product(conn, user, product_id))
@@ -755,7 +1033,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.delete("/api/products/{product_id}/image")
     def delete_product_image(product_id: int, user: CurrentUser, conn: Conn) -> dict:
-        row = _load_product(conn, user, product_id)
+        row = _load_product(conn, user, product_id, write=True)
         conn.execute("UPDATE products SET image = NULL, updated_at = ? WHERE id = ?", (db.now(), product_id))
         conn.commit()
         images.delete(settings.images, "products", row["image"])
@@ -765,7 +1043,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.post("/api/products/{product_id}/ratings", status_code=201)
     def create_rating(product_id: int, body: RatingIn, user: CurrentUser, conn: Conn, response: Response) -> dict:
-        _load_product(conn, user, product_id)
+        _load_product(conn, user, product_id, write=True)
         existing = _replayed(conn, user, "ratings", body.client_id)
         if existing is not None:
             row = _load_rating(conn, user, existing)
@@ -811,7 +1089,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.post("/api/products/{product_id}/prices", status_code=201)
     def create_price(product_id: int, body: PriceIn, user: CurrentUser, conn: Conn, response: Response) -> dict:
-        _load_product(conn, user, product_id)
+        _load_product(conn, user, product_id, write=True)
         existing = _replayed(conn, user, "prices", body.client_id)
         if existing is None:
             try:
@@ -834,7 +1112,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.patch("/api/prices/{price_id}")
     def update_price(price_id: int, body: PricePatch, user: CurrentUser, conn: Conn) -> dict:
-        row = _load_price(conn, user, price_id)
+        row = _load_price(conn, user, price_id, write=True)
         changes: dict = {}
         if body.amount_cents is not None:
             changes["amount_cents"] = body.amount_cents
@@ -865,13 +1143,13 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.delete("/api/prices/{price_id}", status_code=204)
     def delete_price(price_id: int, user: CurrentUser, conn: Conn) -> None:
-        _load_price(conn, user, price_id)
+        _load_price(conn, user, price_id, write=True)
         conn.execute("DELETE FROM prices WHERE id = ?", (price_id,))
         log.info("price_deleted", extra={"price_id": price_id})
 
     @app.patch("/api/ratings/{rating_id}")
     def update_rating(rating_id: int, body: RatingPatch, user: CurrentUser, conn: Conn) -> dict:
-        _load_rating(conn, user, rating_id)
+        _load_rating(conn, user, rating_id, write=True)
         changes: dict = {}
         if body.buy_again is not None:
             changes["buy_again"] = int(body.buy_again)
@@ -894,7 +1172,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.delete("/api/ratings/{rating_id}", status_code=204)
     def delete_rating(rating_id: int, user: CurrentUser, conn: Conn) -> None:
-        row = _load_rating(conn, user, rating_id)
+        row = _load_rating(conn, user, rating_id, write=True)
         conn.execute("DELETE FROM ratings WHERE id = ?", (rating_id,))
         conn.commit()
         images.delete(settings.images, "ratings", row["photo"])
@@ -903,11 +1181,11 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     @app.put("/api/ratings/{rating_id}/photo")
     async def put_rating_photo(rating_id: int, request: Request) -> dict:
         with db.session(settings.database) as conn:
-            _load_rating(conn, session_of(request, conn), rating_id)
+            _load_rating(conn, session_of(request, conn), rating_id, write=True)
         data = await read_picture(request)
         with db.session(settings.database) as conn:
             user = session_of(request, conn)
-            row = _load_rating(conn, user, rating_id)
+            row = _load_rating(conn, user, rating_id, write=True)
             name = images.save(settings.images, "ratings", data)
             conn.execute("UPDATE ratings SET photo = ?, updated_at = ? WHERE id = ?", (name, db.now(), rating_id))
             result = _rating(_load_rating(conn, user, rating_id))
@@ -917,7 +1195,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.delete("/api/ratings/{rating_id}/photo")
     def delete_rating_photo(rating_id: int, user: CurrentUser, conn: Conn) -> dict:
-        row = _load_rating(conn, user, rating_id)
+        row = _load_rating(conn, user, rating_id, write=True)
         conn.execute("UPDATE ratings SET photo = NULL, updated_at = ? WHERE id = ?", (db.now(), rating_id))
         conn.commit()
         images.delete(settings.images, "ratings", row["photo"])
@@ -930,16 +1208,16 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         target = images.path(settings.images, kind, name)
         if target is None:
             raise HTTPException(404, "not found")
-        # Only pictures of the user's own household.
+        # Only pictures of lists the user is a member of.
         if kind == "products":
             owner = conn.execute(
-                "SELECT 1 FROM products WHERE image = ? AND household_id = ?", (name, user.household_id)
+                "SELECT 1 FROM products p" + MEMBER_JOIN + " WHERE p.image = ?", (user.id, name)
             ).fetchone()
         else:
             owner = conn.execute(
-                "SELECT 1 FROM ratings r JOIN products p ON p.id = r.product_id"
-                " WHERE r.photo = ? AND p.household_id = ?",
-                (name, user.household_id),
+                "SELECT 1 FROM ratings r JOIN products p ON p.id = r.product_id" + MEMBER_JOIN
+                + " WHERE r.photo = ?",
+                (user.id, name),
             ).fetchone()
         if owner is None or not target.is_file():
             raise HTTPException(404, "not found")

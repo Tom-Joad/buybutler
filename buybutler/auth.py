@@ -34,7 +34,6 @@ _DUMMY_HASH: str | None = None
 @dataclass(frozen=True)
 class User:
     id: int
-    household_id: int
     username: str
     role: str
 
@@ -90,32 +89,39 @@ def check_password(password: str) -> str:
     return password
 
 
-def create_user(conn: sqlite3.Connection, username: str, password: str) -> User:
-    """Add a user. The first user creates the household and becomes its admin."""
+def create_user(conn: sqlite3.Connection, username: str, password: str, role: str | None = None) -> User:
+    """Add a user. The very first one becomes admin and gets a list "Home";
+    later users start without a list and create or are given their own."""
     username = check_username(username)
     check_password(password)
+    if role not in (None, "admin", "member"):
+        raise AuthError("the role is admin or member")
     if conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone():
         raise AuthError("a user with this name exists already")
 
     stamp = db.now()
-    # One household for now; adding users to other households comes with
-    # the user management.
-    row = conn.execute("SELECT id FROM households ORDER BY id LIMIT 1").fetchone()
-    if row is None:
-        household_id = conn.execute(
-            "INSERT INTO households (name, created_at, updated_at) VALUES ('Home', ?, ?)", (stamp, stamp)
-        ).lastrowid
-        role = "admin"
-    else:
-        household_id = row["id"]
-        role = "member"
-
+    first = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+    role = "admin" if first else (role or "member")
     user_id = conn.execute(
-        "INSERT INTO users (household_id, username, password_hash, role, created_at, updated_at)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (household_id, username, hash_password(password), role, stamp, stamp),
+        "INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        (username, hash_password(password), role, stamp, stamp),
     ).lastrowid
-    return User(user_id, household_id, username, role)
+    if first:
+        create_list(conn, user_id, "Home")
+    return User(user_id, username, role)
+
+
+def create_list(conn: sqlite3.Connection, owner_id: int, name: str) -> int:
+    stamp = db.now()
+    list_id = conn.execute(
+        "INSERT INTO lists (name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (name, owner_id, stamp, stamp),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO list_members (list_id, user_id, role, created_at, updated_at) VALUES (?, ?, 'owner', ?, ?)",
+        (list_id, owner_id, stamp, stamp),
+    )
+    return list_id
 
 
 def set_password(conn: sqlite3.Connection, user_id: int, password: str) -> None:
@@ -131,7 +137,7 @@ def set_password(conn: sqlite3.Connection, user_id: int, password: str) -> None:
 def authenticate(conn: sqlite3.Connection, username: str, password: str) -> User | None:
     global _DUMMY_HASH
     row = conn.execute(
-        "SELECT id, household_id, username, role, password_hash FROM users WHERE username = ?",
+        "SELECT id, username, role, password_hash FROM users WHERE username = ?",
         (username.strip(),),
     ).fetchone()
     if row is None:
@@ -141,7 +147,7 @@ def authenticate(conn: sqlite3.Connection, username: str, password: str) -> User
         return None
     if not verify_password(password, row["password_hash"]):
         return None
-    return User(row["id"], row["household_id"], row["username"], row["role"])
+    return User(row["id"], row["username"], row["role"])
 
 
 def _token_hash(token: str) -> str:
@@ -172,7 +178,7 @@ def session_user(conn: sqlite3.Connection, token: str, days: int) -> tuple[User 
     """The user a session token belongs to, and whether the session was just
     extended (the caller then renews the cookie, so both expire together)."""
     row = conn.execute(
-        "SELECT u.id, u.household_id, u.username, u.role, s.last_seen_at, s.expires_at"
+        "SELECT u.id, u.username, u.role, s.last_seen_at, s.expires_at"
         " FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
         (_token_hash(token),),
     ).fetchone()
@@ -182,7 +188,7 @@ def session_user(conn: sqlite3.Connection, token: str, days: int) -> tuple[User 
     if row["expires_at"] < _iso(current):
         end_session(conn, token)
         return None, False
-    user = User(row["id"], row["household_id"], row["username"], row["role"])
+    user = User(row["id"], row["username"], row["role"])
     # A sliding expiry, written at most once an hour to keep reads cheap.
     if row["last_seen_at"] < _iso(current - timedelta(hours=1)):
         conn.execute(

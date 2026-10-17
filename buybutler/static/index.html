@@ -22,11 +22,21 @@
   <a class="wordmark" href="#/scan">Buybutler<span class="stop">.</span></a>
   <nav>
     <a href="#/scan" data-nav="scan">Scan</a>
-    <a href="#/lists" data-nav="lists">Lists</a>
+    <a href="#/products" data-nav="lists">Products</a>
     <a href="#/account" data-nav="account">Account</a>
   </nav>
   <a class="outbox-badge" id="outbox-badge" href="#/account" hidden></a>
 </header>
+
+<!-- The list everything happens in, and the way to the list management. -->
+<div class="listbar" id="listbar" hidden>
+  <label class="listbar-pick">
+    <span class="label">List</span>
+    <select id="list-select" aria-label="Current list"></select>
+  </label>
+  <span class="tag tag--quiet" id="list-role" hidden></span>
+  <a class="ghost" href="#/manage">Manage →</a>
+</div>
 
 <main id="main">
 
@@ -68,7 +78,7 @@
       <button class="btn btn--secondary" type="submit">Look up</button>
     </form>
     <p class="message" id="scan-message" role="status"></p>
-    <a class="ghost" href="#/new">Add a product without barcode →</a>
+    <a class="ghost" id="add-by-hand" href="#/new">Add a product without barcode →</a>
   </section>
 
   <!-- Product -->
@@ -269,6 +279,67 @@
     <ul class="list" id="l-items"></ul>
   </section>
 
+  <!-- Lists: overview -->
+  <section class="view" id="view-manage" hidden>
+    <h1>Lists</h1>
+    <p class="message" id="m-message" role="status"></p>
+    <ul class="list" id="m-lists"></ul>
+    <form id="new-list-form" class="inline-form">
+      <label class="field">
+        <span class="label">New list</span>
+        <input name="name" maxlength="100" placeholder="Home, Office kitchen" required>
+      </label>
+      <button class="btn btn--primary" type="submit">Create</button>
+    </form>
+  </section>
+
+  <!-- Lists: one list with its members -->
+  <section class="view" id="view-list" hidden>
+    <p class="eyebrow" id="l1-role"></p>
+    <h1 id="l1-name"></h1>
+    <p class="stamps" id="l1-stamps"></p>
+    <p class="message" id="l1-message" role="alert"></p>
+    <form id="rename-form" class="inline-form" hidden>
+      <label class="field">
+        <span class="label">Name</span>
+        <input name="name" maxlength="100" required>
+      </label>
+      <button class="btn btn--secondary" type="submit">Rename</button>
+    </form>
+    <h2 class="section-title">Members</h2>
+    <ul class="history" id="l1-members"></ul>
+    <form id="member-form" class="stack" hidden>
+      <div class="price-row price-row--member">
+        <label class="field">
+          <span class="label">User name</span>
+          <input name="username" autocapitalize="none" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span class="label">Role</span>
+          <select name="role">
+            <option value="editor">Editor</option>
+            <option value="viewer">Viewer</option>
+            <option value="owner">Owner</option>
+          </select>
+        </label>
+      </div>
+      <button class="btn btn--secondary" type="submit">Add member</button>
+    </form>
+    <p class="meta">Owners manage members and the list; editors add and change products, ratings and prices;
+      viewers only read.</p>
+    <button class="btn btn--outline" id="leave-list" type="button">Leave this list</button>
+    <form id="delete-list-form" class="stack danger-zone" hidden>
+      <h2 class="section-title">Delete list</h2>
+      <p class="meta">Deletes every product, rating, price and photo in this list, for all members. Type the
+        list's name to confirm.</p>
+      <label class="field">
+        <span class="label">List name</span>
+        <input name="confirm_name" autocomplete="off" required>
+      </label>
+      <button class="btn btn--outline btn--danger" type="submit">Delete list for good</button>
+    </form>
+  </section>
+
   <!-- Account -->
   <section class="view" id="view-account" hidden>
     <h1>Account</h1>
@@ -292,6 +363,31 @@
       <p class="message" id="a-message" role="alert"></p>
       <button class="btn btn--secondary" type="submit">Change password</button>
     </form>
+    <div id="a-users-section" hidden>
+      <h2 class="section-title">Users</h2>
+      <ul class="history" id="a-users"></ul>
+      <form id="user-form" class="stack">
+        <div class="price-row price-row--member">
+          <label class="field">
+            <span class="label">User name</span>
+            <input name="username" autocapitalize="none" autocomplete="off" required>
+          </label>
+          <label class="field">
+            <span class="label">Role</span>
+            <select name="role">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          <span class="label">Password, at least 10 characters</span>
+          <input name="password" type="password" autocomplete="new-password" minlength="10" required>
+        </label>
+        <p class="message" id="u-message" role="alert"></p>
+        <button class="btn btn--secondary" type="submit">Add user</button>
+      </form>
+    </div>
     <button class="btn btn--outline" id="logout" type="button">Log out</button>
   </section>
 

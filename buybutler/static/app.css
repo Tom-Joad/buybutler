@@ -88,6 +88,66 @@ body {
   border-bottom-color: var(--red);
 }
 
+/* The current list, under the bar. */
+.listbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-10) var(--space-20);
+  border-bottom: var(--stroke-hairline) solid var(--border-hairline);
+}
+
+.listbar-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  flex: 1;
+  min-width: 0;
+}
+
+.listbar select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-weight: 700;
+}
+
+.tag--quiet {
+  margin-left: 0;
+  background: transparent;
+  border-color: var(--border-structural);
+}
+
+.price-row--member {
+  grid-template-columns: 1.6fr 1fr;
+  margin-bottom: 0;
+}
+
+.price-row select {
+  width: 100%;
+}
+
+.danger-zone {
+  margin-top: var(--space-48);
+  padding-top: var(--space-20);
+  border-top: var(--stroke-structural) solid var(--status-negative);
+}
+
+.member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-10);
+  margin-top: var(--space-6);
+}
+
+.member-actions select {
+  padding: 4px 8px;
+  font-size: 15px;
+}
+
 /* ---- Views -------------------------------------------------------------- */
 
 main {

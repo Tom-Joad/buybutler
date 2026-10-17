@@ -16,10 +16,12 @@ interface in plain HTML/CSS/JS without a build step.
 with milliseconds, from `db.now()`) on every table that holds user data. The
 owner wants them kept for later use; never drop or overwrite them.
 
-**Users and households from the start.** Every product belongs to a
-household, every rating to a user. Every query filters by the caller's
-household. Multi-user management comes later and must not need a data
-migration beyond new columns.
+**Every record is reached through a list membership.** Products belong to a
+list, ratings and prices to a product, and every query joins
+`list_members` for the caller (`MEMBER_JOIN`, `list_dep`). Writes check the
+role (`write=True`, `_check_write`): viewers read only. A list keeps at
+least one owner, the installation at least one admin (`lists.py`). Tests
+cover every role on every endpoint that writes.
 
 **Schema changes are migrations.** Append a step to `db.MIGRATIONS`; never
 edit a released step.

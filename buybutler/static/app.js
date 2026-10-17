@@ -22,6 +22,8 @@ const state = {
   verdict: "buy",
   flash: null, // { text, error } shown once on the next view
   holdJob: null, // an outbox job the user is still adding to
+  lists: null, // the user's lists with their role; null until loaded
+  listId: null, // the list everything happens in (sent as a header)
   sentProducts: {}, // outbox job id -> product id, once its product was created
 };
 
@@ -69,8 +71,10 @@ async function send(method, path, payload, headers, retries) {
   }
 }
 
-async function api(method, path, body, { retries = RETRY_DELAYS.length } = {}) {
+async function api(method, path, body, { retries = RETRY_DELAYS.length, list } = {}) {
   const headers = { "X-Buybutler": "1" };
+  const listId = list !== undefined ? list : state.listId;
+  if (listId) headers["X-Buybutler-List"] = String(listId);
   let payload;
   if (body instanceof Blob) {
     payload = body;
@@ -166,12 +170,13 @@ async function runJob(job, retries) {
     const body = step.file ? new Blob([step.file.bytes], { type: step.file.type }) : step.body;
     let data;
     try {
-      data = await api(step.method, path, body, { retries });
+      data = await api(step.method, path, body, { retries, list: step.list });
     } catch (err) {
       // Saved offline, but the barcode was added meanwhile (another phone,
       // or the lookup itself had failed): rate the existing product.
       if (err.status === 409 && step.ref === "product" && step.body.barcode) {
-        const r = await api("GET", `/api/lookup?barcode=${encodeURIComponent(step.body.barcode)}`, undefined, { retries });
+        const r = await api("GET", `/api/lookup?barcode=${encodeURIComponent(step.body.barcode)}`, undefined,
+          { retries, list: step.list });
         if (!r.product) throw err;
         data = r.product;
       } else {
@@ -393,6 +398,7 @@ function go(hash) {
 function show(id, nav) {
   for (const v of views) v.hidden = v.id !== id;
   $("#bar").hidden = id === "view-login";
+  $("#listbar").hidden = id === "view-login" || !state.lists || state.lists.length === 0;
   for (const a of document.querySelectorAll("[data-nav]")) {
     if (a.dataset.nav === nav) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -422,6 +428,22 @@ async function route() {
       return;
     }
   }
+  if (state.user && state.lists === null) {
+    try {
+      await loadLists();
+    } catch (err) {
+      if (err.status === 401) return;
+      // Offline: keep working in the list used last.
+      state.lists = [];
+      state.listId = storedListId();
+    }
+  }
+  if (state.user && state.lists && state.lists.length === 0 && state.listId === null
+      && !["manage", "account", "login"].includes(parts[0])) {
+    flash("Create your first list to start. Lists can be shared with other users.");
+    go("#/manage");
+    return;
+  }
   if (state.user) syncOutbox();
 
   try {
@@ -429,7 +451,10 @@ async function route() {
       case "login":
         return showLogin();
       case "lists":
+      case "products":
         return await showLists(params);
+      case "manage":
+        return parts[1] ? await showListDetail(Number(parts[1])) : await showManage();
       case "account":
         return showAccount();
       case "new":
@@ -471,6 +496,224 @@ async function loadFacets() {
   fill($("#categories"), state.facets.categories);
 }
 
+// ---- Lists ------------------------------------------------------------------
+
+const LIST_KEY = "buybutler.list";
+
+function storedListId() {
+  try {
+    const id = Number(localStorage.getItem(LIST_KEY));
+    return id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadLists() {
+  const { lists } = await api("GET", "/api/lists");
+  state.lists = lists;
+  const wanted = state.listId || storedListId();
+  const pick = lists.find((l) => l.id === wanted) || lists[0] || null;
+  setList(pick ? pick.id : null);
+}
+
+function setList(id) {
+  state.listId = id;
+  try {
+    if (id) localStorage.setItem(LIST_KEY, String(id));
+    else localStorage.removeItem(LIST_KEY);
+  } catch {
+    // Private mode: the choice lasts until the page is closed.
+  }
+  renderListBar();
+}
+
+function currentList() {
+  return (state.lists || []).find((l) => l.id === state.listId) || null;
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function canEdit() {
+  const list = currentList();
+  return !list || list.role !== "viewer";
+}
+
+const ROLE_WORD = { owner: "Owner", editor: "Editor", viewer: "Read only" };
+
+function renderListBar() {
+  const select = $("#list-select");
+  const lists = state.lists || [];
+  select.replaceChildren(...lists.map((l) => el("option", { value: String(l.id), text: l.name })));
+  if (state.listId) select.value = String(state.listId);
+  const list = currentList();
+  const tag = $("#list-role");
+  tag.hidden = !list || list.role !== "viewer";
+  tag.textContent = list ? ROLE_WORD[list.role] : "";
+  const bar = $("#listbar");
+  if (!$("#view-login").hidden || lists.length === 0) bar.hidden = true;
+  else bar.hidden = false;
+}
+
+$("#list-select").addEventListener("change", (ev) => {
+  setList(Number(ev.currentTarget.value));
+  route();
+});
+
+async function showManage() {
+  await loadLists();
+  show("view-manage", "lists");
+  showInfo($("#m-message"), "");
+  takeFlash($("#m-message"));
+  $("#new-list-form").reset();
+  $("#m-lists").replaceChildren(
+    ...state.lists.map((l) => {
+      const open = el("button", { type: "button", class: "edit linkish", text: l.id === state.listId ? "In use" : "Use" });
+      open.addEventListener("click", () => {
+        setList(l.id);
+        go("#/scan");
+      });
+      return el("li", {},
+        el("a", { href: `#/manage/${l.id}` },
+          el("span", { class: "text" },
+            el("span", { class: "name", text: l.name }),
+            el("span", { class: "sub" },
+              el("span", { class: "word", text: ROLE_WORD[l.role] }),
+              el("span", { text: `${plural(l.members, "member")} · ${plural(l.products, "product")}` })))),
+        open);
+    }),
+  );
+}
+
+$("#new-list-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  try {
+    const created = await api("POST", "/api/lists", { name: form.name.value });
+    setList(created.id);
+    await showManage();
+    showInfo($("#m-message"), `Created ${created.name}. It is the list in use now.`);
+  } catch (err) {
+    showError($("#m-message"), err);
+  }
+});
+
+async function showListDetail(id) {
+  await loadLists();
+  const list = state.lists.find((l) => l.id === id);
+  if (!list) throw new ApiError(404, "list not found");
+  const { members } = await api("GET", `/api/lists/${id}/members`);
+  show("view-list", "lists");
+  const owner = list.role === "owner";
+  showInfo($("#l1-message"), "");
+  $("#l1-role").textContent = `You: ${ROLE_WORD[list.role]}`;
+  $("#l1-name").textContent = list.name;
+  $("#l1-stamps").textContent = `Created ${stamp(list.created_at)} · changed ${stamp(list.updated_at)}`
+    + ` · ${plural(list.products, "product")}`;
+  $("#rename-form").hidden = !owner;
+  $("#rename-form").name.value = list.name;
+  $("#member-form").hidden = !owner;
+  $("#member-form").reset();
+  $("#delete-list-form").hidden = !owner;
+  $("#delete-list-form").reset();
+  $("#view-list").dataset.list = id;
+
+  $("#l1-members").replaceChildren(
+    ...members.map((m) => {
+      const actions = el("div", { class: "member-actions" });
+      if (owner) {
+        const role = el("select", { "aria-label": `Role of ${m.username}` },
+          ...["owner", "editor", "viewer"].map((r) => el("option", { value: r, text: ROLE_WORD[r] })));
+        role.value = m.role;
+        role.addEventListener("change", async () => {
+          try {
+            await api("PATCH", `/api/lists/${id}/members/${m.user_id}`, { role: role.value });
+            await showListDetail(id);
+          } catch (err) {
+            role.value = m.role;
+            showError($("#l1-message"), err);
+          }
+        });
+        actions.append(role);
+        if (!m.you) {
+          const remove = el("button", { type: "button", class: "edit linkish", text: "Remove" });
+          remove.addEventListener("click", async () => {
+            if (!confirm(`Remove ${m.username} from ${list.name}?`)) return;
+            try {
+              await api("DELETE", `/api/lists/${id}/members/${m.user_id}`);
+              await showListDetail(id);
+            } catch (err) {
+              showError($("#l1-message"), err);
+            }
+          });
+          actions.append(remove);
+        }
+      } else {
+        actions.append(el("span", { class: "word", text: ROLE_WORD[m.role] }));
+      }
+      return el("li", {},
+        el("div", { class: "head" }, el("span", { class: "word", text: m.you ? `${m.username} (you)` : m.username })),
+        actions,
+        el("p", { class: "stamps", text: `Member since ${stamp(m.created_at)}` }));
+    }),
+  );
+  $("#leave-list").dataset.user = members.find((m) => m.you).user_id;
+}
+
+$("#rename-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const id = Number($("#view-list").dataset.list);
+  try {
+    await api("PATCH", `/api/lists/${id}`, { name: ev.currentTarget.name.value });
+    await showListDetail(id);
+  } catch (err) {
+    showError($("#l1-message"), err);
+  }
+});
+
+$("#member-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const id = Number($("#view-list").dataset.list);
+  const name = form.username.value.trim();
+  try {
+    await api("POST", `/api/lists/${id}/members`, { username: name, role: form.role.value });
+    await showListDetail(id);
+    showInfo($("#l1-message"), `${name} can use this list now.`);
+  } catch (err) {
+    showError($("#l1-message"), err);
+  }
+});
+
+$("#leave-list").addEventListener("click", async () => {
+  const id = Number($("#view-list").dataset.list);
+  if (!confirm("Leave this list? You lose access until an owner adds you again.")) return;
+  try {
+    await api("DELETE", `/api/lists/${id}/members/${$("#leave-list").dataset.user}`);
+    if (state.listId === id) setList(null);
+    state.lists = null;
+    go("#/manage");
+  } catch (err) {
+    showError($("#l1-message"), err);
+  }
+});
+
+$("#delete-list-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const id = Number($("#view-list").dataset.list);
+  const name = ev.currentTarget.confirm_name.value;
+  if (!confirm("Delete this list with everything in it, for all members?")) return;
+  try {
+    await api("DELETE", `/api/lists/${id}`, { confirm_name: name });
+    if (state.listId === id) setList(null);
+    state.lists = null;
+    flash("The list was deleted.");
+    go("#/manage");
+  } catch (err) {
+    showError($("#l1-message"), err);
+  }
+});
+
 // ---- Login and account ----------------------------------------------------
 
 function showLogin() {
@@ -488,6 +731,7 @@ $("#login-form").addEventListener("submit", async (ev) => {
       username: form.username.value,
       password: form.password.value,
     });
+    state.lists = null;
     form.password.value = "";
     go("#/scan");
   } catch (err) {
@@ -501,7 +745,79 @@ function showAccount() {
   $("#password-form").reset();
   showInfo($("#a-message"), "");
   updateOutboxBadge();
+  $("#a-users-section").hidden = state.user.role !== "admin";
+  if (state.user.role === "admin") loadUsers().catch((err) => showError($("#u-message"), err));
 }
+
+async function loadUsers() {
+  const { users } = await api("GET", "/api/users");
+  renderUsers(users);
+}
+
+function renderUsers(users) {
+  $("#a-users").replaceChildren(
+    ...users.map((u) => {
+      const me = u.username === state.user.username;
+      const actions = el("div", { class: "member-actions" });
+      const role = el("select", { "aria-label": `Role of ${u.username}` },
+        el("option", { value: "member", text: "Member" }), el("option", { value: "admin", text: "Admin" }));
+      role.value = u.role;
+      role.addEventListener("change", async () => {
+        try {
+          renderUsers((await api("PATCH", `/api/users/${u.id}`, { role: role.value })).users);
+        } catch (err) {
+          role.value = u.role;
+          showError($("#u-message"), err);
+        }
+      });
+      actions.append(role);
+      const reset = el("button", { type: "button", class: "edit linkish", text: "New password" });
+      reset.addEventListener("click", async () => {
+        const password = prompt(`New password for ${u.username} (at least 10 characters). Their sessions end.`);
+        if (!password) return;
+        try {
+          await api("POST", `/api/users/${u.id}/password`, { password });
+          showInfo($("#u-message"), `Password of ${u.username} changed.`);
+        } catch (err) {
+          showError($("#u-message"), err);
+        }
+      });
+      actions.append(reset);
+      if (!me) {
+        const remove = el("button", { type: "button", class: "edit linkish", text: "Delete" });
+        remove.addEventListener("click", async () => {
+          if (!confirm(`Delete ${u.username}? Lists only they use are deleted too.`)) return;
+          try {
+            await api("DELETE", `/api/users/${u.id}`);
+            await loadUsers();
+          } catch (err) {
+            showError($("#u-message"), err);
+          }
+        });
+        actions.append(remove);
+      }
+      return el("li", {},
+        el("div", { class: "head" }, el("span", { class: "word", text: me ? `${u.username} (you)` : u.username })),
+        actions,
+        el("p", { class: "stamps", text: `${plural(u.lists, "list")} · created ${stamp(u.created_at)}` }));
+    }),
+  );
+}
+
+$("#user-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  try {
+    const { users } = await api("POST", "/api/users", {
+      username: form.username.value.trim(), password: form.password.value, role: form.role.value,
+    });
+    renderUsers(users);
+    showInfo($("#u-message"), `Added ${form.username.value.trim()}. They create their own lists, or an owner adds them to one.`);
+    form.reset();
+  } catch (err) {
+    showError($("#u-message"), err);
+  }
+});
 
 function renderOutbox(jobs) {
   $("#a-outbox-section").hidden = jobs.length === 0;
@@ -548,6 +864,7 @@ $("#password-form").addEventListener("submit", async (ev) => {
 $("#logout").addEventListener("click", async () => {
   await api("DELETE", "/api/session").catch(() => {});
   state.user = null;
+  state.lists = null;
   go("#/login");
 });
 
@@ -572,6 +889,7 @@ function showScan() {
   show("view-scan", "scan");
   showInfo($("#scan-message"), "");
   takeFlash($("#scan-message"));
+  $("#add-by-hand").hidden = !canEdit();
   $("#manual-form").reset();
   if (!navigator.mediaDevices || !window.isSecureContext) {
     $("#scan-start").disabled = true;
@@ -671,10 +989,14 @@ async function lookup(barcode) {
       go(`#/product/${r.product.id}`);
       return;
     }
+    if (!canEdit()) {
+      showInfo(msg, `${barcode} is not in ${currentList().name}, and the list is read only for you.`);
+      return;
+    }
     state.suggestion = r.suggestion ? { ...r.suggestion, lookup: r.lookup } : { barcode, lookup: r.lookup };
     go(`#/new?barcode=${encodeURIComponent(barcode)}`);
   } catch (err) {
-    if (err.offline) {
+    if (err.offline && canEdit()) {
       state.suggestion = { barcode, lookup: "offline" };
       go(`#/new?barcode=${encodeURIComponent(barcode)}`);
       return;
@@ -691,6 +1013,10 @@ async function showProduct(id) {
   show("view-product", "lists");
   showInfo($("#p-message"), "");
   takeFlash($("#p-message"));
+  // Viewers see everything, but no way to change it.
+  const editable = p.role !== "viewer";
+  for (const sel of ["#p-rate", "#p-edit", "#p-add-price", "#p-delete"]) $(sel).hidden = !editable;
+  if (!editable && !$("#p-message").textContent) showInfo($("#p-message"), "This list is read only for you.");
 
   const box = $("#p-verdict");
   box.className = "verdict";
@@ -741,7 +1067,7 @@ async function showProduct(id) {
         el("div", { class: "head" },
           el("span", { class: "word", text: priceText(pr) }),
           pr.on_offer ? el("span", { class: "tag", text: "On offer" }) : null,
-          el("a", { class: "edit", href: `#/product/${p.id}/price/${pr.id}`, text: "Edit" })),
+          editable ? el("a", { class: "edit", href: `#/product/${p.id}/price/${pr.id}`, text: "Edit" }) : null),
         el("p", {
           class: "stamps",
           text: [pr.bought_on, pr.store, pr.user && `by ${pr.user}`, `entered ${stamp(pr.created_at)}`,
@@ -755,7 +1081,7 @@ async function showProduct(id) {
     ...p.ratings.map((r) =>
       el("li", {},
         el("div", { class: "head" }, verdictWord(r.buy_again), stars(r.stars),
-          el("a", { class: "edit", href: `#/product/${p.id}/rating/${r.id}`, text: "Edit" })),
+          editable ? el("a", { class: "edit", href: `#/product/${p.id}/rating/${r.id}`, text: "Edit" }) : null),
         r.reason ? el("p", { class: "reason", text: r.reason }) : null,
         r.photo ? el("img", { src: r.photo, alt: "Photo of this rating", loading: "lazy" }) : null,
         el("p", {
@@ -859,7 +1185,8 @@ $("#product-form").addEventListener("submit", async (ev) => {
     body.use_suggested_image = !$("#pf-image-choice").hidden && form.use_suggested_image.checked;
     body.client_id = uid();
     job = newJob(`New product: ${body.name}`, [
-      { ref: "product", method: "POST", path: "/api/products", body },
+      // The list is fixed when the product is saved, not when it is sent.
+      { ref: "product", method: "POST", path: "/api/products", body, list: state.listId },
       file && (await blobStep("image", "/api/products/{product}/image", await shrink(file))),
     ]);
     showInfo(msg, "Saving");

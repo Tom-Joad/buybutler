@@ -4,6 +4,29 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [Unreleased]
+
+### Added
+- **Several lists, shared between users.** Products, ratings and prices
+  live in a list; a bar under the top bar switches between them, and the
+  phone remembers the one in use.
+- Sharing by user name with the roles owner, editor and viewer; members can
+  leave, owners change roles and remove members. A list always keeps an
+  owner. Deleting a list asks for its name.
+- User management for admins under **Account → Users**: add users, change
+  their role, set a new password, delete them. `buybutler user add --admin`.
+
+### Changed
+- The first start migrates the database: the household becomes the list
+  "Home", its admin the owner, every other user an editor. Nothing to do
+  by hand.
+- New users start without a list (they create one or are added to one);
+  the first user still gets "Home".
+- Deleting a user also deletes the lists only they used; a shared list they
+  alone own needs another owner first.
+- The navigation item "Lists" is now "Products"; "Manage" in the list bar
+  leads to the lists.
+
 ## [0.6.0] - 2026-10-17
 
 ### Added

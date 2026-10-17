@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, auth, config, db
+from . import __version__, auth, config, db, lists
 
 
 def _password(args: argparse.Namespace) -> str:
@@ -38,12 +38,17 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("run", help="start the web server")
 
     users = sub.add_parser("user", help="manage users").add_subparsers(dest="action", required=True)
-    for action, text in (("add", "add a user (the first one becomes admin)"), ("passwd", "set a new password")):
+    for action, text in (
+        ("add", "add a user (the first one becomes admin and gets the list Home)"),
+        ("passwd", "set a new password"),
+    ):
         p = users.add_parser(action, help=text)
         p.add_argument("name")
         p.add_argument("--password-stdin", action="store_true", help="read the password from standard input")
+        if action == "add":
+            p.add_argument("--admin", action="store_true", help="may manage users")
     users.add_parser("list", help="list users")
-    p = users.add_parser("delete", help="delete a user; their ratings stay")
+    p = users.add_parser("delete", help="delete a user; lists only they use go too, their ratings elsewhere stay")
     p.add_argument("name")
 
     p = sub.add_parser("backup", help="write a consistent copy of the database to /config/backups")
@@ -68,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "user":
             with db.session(settings.database) as conn:
                 if args.action == "add":
-                    user = auth.create_user(conn, args.name, _password(args))
+                    user = auth.create_user(conn, args.name, _password(args), "admin" if args.admin else None)
                     print(f"Added {user.username} ({user.role}).")
                 elif args.action == "passwd":
                     row = _user(conn, args.name)
@@ -82,10 +87,12 @@ def main(argv: list[str] | None = None) -> int:
                         print(f"{r['username']}\t{r['role']}\t{r['created_at']}")
                 elif args.action == "delete":
                     row = _user(conn, args.name)
-                    admins = conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0]
-                    if row["role"] == "admin" and admins == 1:
-                        raise auth.AuthError("the last admin can't be deleted")
-                    conn.execute("DELETE FROM users WHERE id = ?", (row["id"],))
+                    try:
+                        files = lists.delete_user(conn, row["id"])
+                    except lists.ListError as exc:
+                        raise auth.AuthError(str(exc)) from None
+                    conn.commit()
+                    lists.remove_files(settings.images, files)
                     print(f"Deleted {row['username']}.")
         elif args.command == "backup":
             stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")

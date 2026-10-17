@@ -76,6 +76,17 @@ def logged_in(client):
     return client
 
 
+def other_user_with_list(client, settings, name: str = "other") -> TestClient:
+    """A second user, logged in, with a list of their own (sent as header)."""
+    with db.session(settings.database) as conn:
+        auth.create_user(conn, name, PASSWORD)
+    other = TestClient(client.app)
+    other.post("/api/session", json={"username": name, "password": PASSWORD}, headers=H)
+    own = other.post("/api/lists", json={"name": f"{name}'s list"}, headers=H).json()
+    other.headers["X-Buybutler-List"] = str(own["id"])
+    return other
+
+
 def make_product(c, **kw) -> dict:
     body = {"name": "Rye bread"} | kw
     r = c.post("/api/products", json=body, headers=H)
@@ -330,18 +341,7 @@ def test_households_are_separate(logged_in, settings):
     r = rate(logged_in, p["id"])
     up = logged_in.put(f"/api/ratings/{r['id']}/photo", content=JPEG, headers=H).json()
     # A second household as the user management will create it.
-    with db.session(settings.database) as conn:
-        stamp = db.now()
-        hid = conn.execute(
-            "INSERT INTO households (name, created_at, updated_at) VALUES ('Other', ?, ?)", (stamp, stamp)
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO users (household_id, username, password_hash, role, created_at, updated_at)"
-            " VALUES (?, 'other', ?, 'admin', ?, ?)",
-            (hid, auth.hash_password(PASSWORD), stamp, stamp),
-        )
-    other = TestClient(logged_in.app)
-    other.post("/api/session", json={"username": "other", "password": PASSWORD}, headers=H)
+    other = other_user_with_list(logged_in, settings)
     assert other.get("/api/products").json()["products"] == []
     assert other.get(f"/api/products/{p['id']}").status_code == 404
     assert other.patch(f"/api/ratings/{r['id']}", json={"reason": "x"}, headers=H).status_code == 404
@@ -557,18 +557,7 @@ def test_list_shows_and_sorts_by_last_price(logged_in):
 def test_prices_stay_in_their_household(logged_in, settings):
     p = make_product(logged_in)
     pr = add_price(logged_in, p["id"])
-    with db.session(settings.database) as conn:
-        stamp = db.now()
-        hid = conn.execute(
-            "INSERT INTO households (name, created_at, updated_at) VALUES ('Other', ?, ?)", (stamp, stamp)
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO users (household_id, username, password_hash, role, created_at, updated_at)"
-            " VALUES (?, 'other', ?, 'admin', ?, ?)",
-            (hid, auth.hash_password(PASSWORD), stamp, stamp),
-        )
-    other = TestClient(logged_in.app)
-    other.post("/api/session", json={"username": "other", "password": PASSWORD}, headers=H)
+    other = other_user_with_list(logged_in, settings)
     assert other.patch(f"/api/prices/{pr['id']}", json={"amount_cents": 1}, headers=H).status_code == 404
     assert other.delete(f"/api/prices/{pr['id']}", headers=H).status_code == 404
     assert other.post(f"/api/products/{p['id']}/prices", json={"amount_cents": 1}, headers=H).status_code == 404
@@ -661,16 +650,5 @@ def test_concurrent_copy_returns_the_first(logged_in, settings, monkeypatch):
 
 def test_households_cant_reuse_a_client_id(logged_in, settings):
     logged_in.post("/api/products", json={"name": "x", "client_id": CID}, headers=H)
-    with db.session(settings.database) as conn:
-        stamp = db.now()
-        hid = conn.execute(
-            "INSERT INTO households (name, created_at, updated_at) VALUES ('Other', ?, ?)", (stamp, stamp)
-        ).lastrowid
-        conn.execute(
-            "INSERT INTO users (household_id, username, password_hash, role, created_at, updated_at)"
-            " VALUES (?, 'other', ?, 'admin', ?, ?)",
-            (hid, auth.hash_password(PASSWORD), stamp, stamp),
-        )
-    other = TestClient(logged_in.app)
-    other.post("/api/session", json={"username": "other", "password": PASSWORD}, headers=H)
+    other = other_user_with_list(logged_in, settings)
     assert other.post("/api/products", json={"name": "y", "client_id": CID}, headers=H).status_code == 409
