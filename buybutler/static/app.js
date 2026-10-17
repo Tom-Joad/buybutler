@@ -183,6 +183,7 @@ async function forgetOffline() {
     // nothing stored
   }
   await idb("known", "readwrite", (s) => s.clear()).catch(() => {});
+  await idb("shopping", "readwrite", (s) => s.clear()).catch(() => {});
   if (window.caches) await caches.delete("buybutler-pictures").catch(() => {});
 }
 
@@ -240,17 +241,18 @@ function uid() {
 // phone and is sent later, in order. A step's path can name an earlier
 // step ("/api/products/{product}/ratings"); its ID is filled in once known.
 
-// One database for both: "jobs" (the outbox) and "known" (the offline copy
-// of rated products, one record per list).
+// One database: "jobs" (the outbox), "known" (the offline copy of rated
+// products) and "shopping" (the last shopping list seen), one record per list.
 const idb = (() => {
   let opening = null;
   const open = () => {
     opening = opening || new Promise((resolve, reject) => {
-      const req = indexedDB.open("buybutler", 2);
+      const req = indexedDB.open("buybutler", 3);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains("jobs")) db.createObjectStore("jobs", { keyPath: "id" });
         if (!db.objectStoreNames.contains("known")) db.createObjectStore("known", { keyPath: "list_id" });
+        if (!db.objectStoreNames.contains("shopping")) db.createObjectStore("shopping", { keyPath: "list_id" });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -321,7 +323,7 @@ async function runJob(job, retries) {
     await Outbox.put(job).catch(() => {});
   }
   await Outbox.remove(job.id).catch(() => {});
-  Known.refresh(true);
+  if (job.steps.some((step) => !step.path.startsWith("/api/shopping"))) Known.refresh(true);
 }
 
 // Sends a new job now. Returns "sent", or "queued" when the network failed
@@ -614,6 +616,8 @@ async function route() {
         return parts[1] ? await showListDetail(Number(parts[1])) : await showManage();
       case "account":
         return showAccount();
+      case "shop":
+        return await showShop();
       case "new":
         return await showProductForm(null, params.get("barcode"));
       case "pending":
@@ -1121,6 +1125,397 @@ function renderUsers(users) {
   );
 }
 
+// ---- Shopping list ------------------------------------------------------------
+//
+// One shopping list per list. Every change is shown at once and sent as an
+// outbox job, in order, so it also works without a connection. While the
+// list is open, it is fetched again every 5 seconds; changes still waiting
+// in the outbox are laid over what the server sent.
+
+const STORE_KEY = "buybutler.store";
+const shop = {
+  data: null, // { list_id, store, stores, items } as the server sent it
+  inFlight: 0, // changes being sent; a fetch meanwhile could be older
+  dragging: false,
+  editing: null, // the item whose edit form is open
+  local: [], // jobs made here that may not be in the outbox yet
+};
+let shopChain = Promise.resolve();
+
+function shopStore() {
+  try {
+    return localStorage.getItem(STORE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+const sameStore = (a, b) => (a || "").toLowerCase() === (b || "").toLowerCase();
+
+// Changes still waiting on the phone, laid over the server's list.
+function overlay(items, jobs, store) {
+  for (const job of jobs.sort((a, b) => a.created.localeCompare(b.created))) {
+    for (const step of job.steps) {
+      if (step.done || step.list !== state.listId || !step.path.startsWith("/api/shopping")) continue;
+      const id = step.path.split("/")[3];
+      const item = items.find((i) => i.id === id);
+      if (step.method === "POST" && step.path === "/api/shopping") {
+        const known = items.find((i) => i.id === step.body.client_id
+          || (step.body.product_id && i.product_id === step.body.product_id && !i.checked));
+        if (!known) items.push({ ...step.local });
+      } else if (step.method === "PATCH" && item) {
+        Object.assign(item, step.body);
+        if (step.body.text) item.name = step.body.text;
+        if (step.body.checked === true && !item.checked_at) item.checked_at = job.created;
+      } else if (step.method === "DELETE") {
+        items.splice(0, items.length, ...items.filter((i) => i.id !== id));
+      } else if (step.path === "/api/shopping/clear-checked") {
+        items.splice(0, items.length, ...items.filter((i) => !i.checked));
+      } else if (step.path === "/api/shopping/order" && sameStore(step.body.store, store)) {
+        step.body.keys.forEach((key, n) => {
+          for (const i of items) if (i.key === key) i.position = n - step.body.keys.length;
+        });
+      }
+    }
+  }
+  return items;
+}
+
+async function loadShop() {
+  const store = shopStore();
+  let data;
+  try {
+    if (state.offline) throw new NetworkError();
+    data = await api("GET", `/api/shopping?store=${encodeURIComponent(store)}`, undefined, { retries: 0 });
+    idb("shopping", "readwrite", (s) => s.put(data)).catch(() => {});
+  } catch (err) {
+    if (!err.offline) throw err;
+    data = await idb("shopping", "readonly", (s) => s.get(state.listId)).catch(() => null);
+    if (!data) throw err;
+    // The positions saved were those of the store chosen then.
+    if (!sameStore(data.store, store)) data = { ...data, items: data.items.map((i) => ({ ...i, position: null })) };
+  }
+  shop.data = data;
+  renderShop();
+}
+
+function shopItems() {
+  const items = structuredClone(shop.data ? shop.data.items : []);
+  return items;
+}
+
+async function renderShop() {
+  if (!shop.data) return;
+  const store = shopStore();
+  const stored = await Outbox.all().catch(() => []);
+  const jobs = [...stored, ...shop.local.filter((j) => !stored.some((x) => x.id === j.id))];
+  const items = overlay(shopItems(), jobs, store);
+  const editable = canEdit();
+
+  const select = $("#shop-store");
+  const stores = [...shop.data.stores];
+  if (store && !stores.some((x) => sameStore(x, store))) stores.push(store);
+  select.replaceChildren(el("option", { value: "", text: "Any store" }),
+    ...stores.map((x) => el("option", { value: x, text: x })));
+  select.value = stores.find((x) => sameStore(x, store)) || "";
+
+  const open = items.filter((i) => !i.checked);
+  const here = open.filter((i) => !i.store || !store || sameStore(i.store, store));
+  const elsewhere = open.filter((i) => !here.includes(i));
+  const byPlace = (a, b) => (a.position ?? Infinity) - (b.position ?? Infinity) || a.created_at.localeCompare(b.created_at);
+  here.sort(byPlace);
+  elsewhere.sort((a, b) => a.store.localeCompare(b.store) || byPlace(a, b));
+  const done = items.filter((i) => i.checked).sort((a, b) => (b.checked_at || "").localeCompare(a.checked_at || ""));
+
+  $("#shop-add").hidden = !editable;
+  $("#shop-open").replaceChildren(...here.map((i) => shopRow(i, editable, true)));
+  $("#shop-empty").hidden = here.length > 0;
+  $("#shop-hint").hidden = !editable || here.length < 2 || here.some((i) => i.position !== null);
+  $("#shop-others").hidden = elsewhere.length === 0;
+  $("#shop-others-title").textContent = `${plural(elsewhere.length, "item")} for other stores`;
+  $("#shop-other-items").replaceChildren(...elsewhere.map((i) => shopRow(i, editable, false)));
+  $("#shop-done-title").hidden = done.length === 0;
+  $("#shop-done").replaceChildren(...done.map((i) => shopRow(i, editable, false)));
+  $("#shop-clear").hidden = !editable || done.length === 0;
+}
+
+function shopRow(item, editable, draggable) {
+  const li = el("li", { class: `shop-item${item.checked ? " is-checked" : ""}` });
+  li.dataset.id = item.id;
+  li.dataset.key = item.key;
+  if (editable && draggable) {
+    const handle = el("button", { type: "button", class: "handle", "aria-label": `Move ${item.name}`, text: "≡" });
+    handle.addEventListener("pointerdown", (ev) => startDrag(ev, li));
+    li.append(handle);
+  }
+  const sub = [item.quantity, item.brand, item.store && !draggable && !item.checked ? item.store : null,
+    item.checked && item.checked_by ? `ticked by ${item.checked_by}` : null].filter(Boolean).join(" · ");
+  const tick = el("button", { type: "button", class: "tick", "aria-pressed": String(item.checked) },
+    el("span", { class: "box" }),
+    el("span", { class: "text" },
+      el("span", { class: "name", text: item.name }),
+      sub ? el("span", { class: "sub", text: sub }) : null,
+      item.verdict === false ? el("span", { class: "sub", text: `Don't buy again${item.reason ? `: ${item.reason}` : ""}` }) : null));
+  tick.disabled = !editable;
+  tick.addEventListener("click", () => {
+    shopChange(item, { checked: !item.checked }, `${item.checked ? "Untick" : "Tick"}: ${item.name}`);
+  });
+  li.append(tick);
+  const side = el("span", { class: "side" });
+  if (editable && item.checked && item.product_id) {
+    side.append(el("a", { class: "edit linkish", href: `#/product/${item.product_id}/price`, text: "Price" }));
+  }
+  if (editable) {
+    const edit = el("button", { type: "button", class: "edit linkish", text: "Edit" });
+    edit.addEventListener("click", () => toggleShopEdit(li, item));
+    side.append(edit);
+  }
+  li.append(side);
+  return li;
+}
+
+function toggleShopEdit(li, item) {
+  const open = li.nextElementSibling && li.nextElementSibling.classList.contains("shop-edit");
+  document.querySelectorAll(".shop-edit").forEach((f) => f.remove());
+  shop.editing = null;
+  if (open) return;
+  shop.editing = item.id;
+  const form = el("form", { class: "shop-edit" });
+  const field = (label, name, value, extra = {}) => el("label", { class: `field${extra.wide ? " wide" : ""}` },
+    el("span", { class: "label", text: label }),
+    el("input", { name, value, maxlength: String(extra.max || 20), autocomplete: "off", ...(extra.list ? { list: extra.list } : {}) }));
+  if (!item.product_id) form.append(field("Text", "text", item.text, { wide: true, max: 100 }));
+  form.append(field("How many", "quantity", item.quantity),
+    field("Only at store", "store", item.store, { list: "stores", max: 100 }));
+  const remove = el("button", { type: "button", class: "btn btn--outline", text: "Remove" });
+  remove.addEventListener("click", () => {
+    shop.editing = null;
+    shopSend(`Remove: ${item.name}`, { method: "DELETE", path: `/api/shopping/${item.id}` });
+  });
+  form.append(el("div", { class: "actions" }, remove, el("button", { type: "submit", class: "btn btn--secondary", text: "Save" })));
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const changes = { quantity: form.quantity.value.trim(), store: form.store.value.trim() };
+    if (form.text && form.text.value.trim()) changes.text = form.text.value.trim();
+    shop.editing = null;
+    shopChange(item, changes, `Change: ${item.name}`);
+  });
+  li.after(form);
+  form.querySelector("input").focus();
+}
+
+function shopChange(item, changes, label) {
+  shopSend(label, { method: "PATCH", path: `/api/shopping/${item.id}`, body: changes });
+}
+
+// Shown at once, sent in order. When older shopping changes still wait on
+// the phone, this one waits behind them (an item added offline must exist
+// before it can be ticked).
+function shopSend(label, step) {
+  const job = newJob(label, [{ ref: "shop", list: state.listId, ...step }]);
+  shop.inFlight++;
+  shop.local.push(job);
+  shopChain = shopChain.then(async () => {
+    try {
+      const waiting = (await Outbox.all().catch(() => [])).some((j) => j.steps.some((s) => !s.done
+        && s.path.startsWith("/api/shopping")));
+      if (waiting) {
+        await Outbox.put(job).catch(() => {});
+        updateOutboxBadge();
+        syncOutbox();
+        return;
+      }
+      await submitJob(job);
+    } catch (err) {
+      showError($("#shop-message"), err);
+    } finally {
+      shop.inFlight--;
+      shop.local = shop.local.filter((j) => j !== job);
+    }
+    if (!$("#view-shop").hidden && !state.offline) await loadShop().catch(() => {});
+  });
+  renderShop();
+}
+
+function addToShopping({ product, text, quantity = "" }) {
+  const clientId = uid();
+  const now = new Date().toISOString();
+  const body = { client_id: clientId, quantity };
+  if (product) body.product_id = product.id;
+  else body.text = text;
+  const local = {
+    id: clientId, product_id: product ? product.id : null, name: product ? product.name : text, text: product ? "" : text,
+    brand: product ? product.brand || "" : "", category: product ? product.category || "" : "", image: null,
+    verdict: product && product.rating ? product.rating.buy_again : null, reason: product && product.rating ? product.rating.reason : "",
+    quantity, store: "", checked: false, checked_at: null, checked_by: null, added_by: state.user.username,
+    key: product ? `p:${product.id}` : `t:${text.trim().replace(/\s+/g, " ").toLowerCase()}`, position: null,
+    created_at: now, updated_at: now,
+  };
+  shopSend(`Shopping: ${local.name}`, { method: "POST", path: "/api/shopping", body, local });
+}
+
+// A product marked "don't buy again" asks first, with the reason.
+function shoppingOk(product) {
+  if (!product.rating || product.rating.buy_again) return true;
+  const why = product.rating.reason ? ` ("${product.rating.reason}")` : "";
+  return confirm(`You noted "Don't buy again" for ${product.name}${why}. Add it anyway?`);
+}
+
+async function showShop() {
+  show("view-shop", "shop");
+  showInfo($("#shop-message"), "");
+  takeFlash($("#shop-message"));
+  shop.editing = null;
+  await loadFacets();
+  if (shop.data && shop.data.list_id === state.listId) renderShop();
+  else shop.data = null;
+  try {
+    await loadShop();
+  } catch (err) {
+    if (!err.offline) throw err;
+    showError($("#shop-message"), new Error("No connection, and this list's shopping list was never opened on this phone."));
+  }
+}
+
+// Live while open: another phone's ticks show within seconds.
+setInterval(() => {
+  if ($("#view-shop").hidden || document.hidden || state.offline || shop.dragging || shop.editing || shop.inFlight) return;
+  loadShop().catch(() => {});
+}, 5000);
+
+$("#shop-store").addEventListener("change", (ev) => {
+  try {
+    localStorage.setItem(STORE_KEY, ev.currentTarget.value);
+  } catch {
+    // Private mode: the choice lasts until the page is closed.
+  }
+  loadShop().catch((err) => showError($("#shop-message"), err));
+});
+
+$("#shop-clear").addEventListener("click", () => {
+  shopSend("Clear ticked", { method: "POST", path: "/api/shopping/clear-checked" });
+});
+
+// Dragging by the handle: the row follows the finger past its neighbours;
+// on release the shown order is saved for this store. The listeners sit on
+// the window: moving the row in the DOM ends a pointer capture.
+function startDrag(ev, li) {
+  ev.preventDefault();
+  const list = li.parentElement;
+  const pointer = ev.pointerId;
+  shop.dragging = true;
+  li.classList.add("is-dragging");
+  const move = (e) => {
+    if (e.pointerId !== pointer) return;
+    e.preventDefault();
+    const rows = [...list.children].filter((x) => x !== li);
+    const before = rows.find((row) => {
+      const box = row.getBoundingClientRect();
+      return e.clientY < box.top + box.height / 2;
+    }) || null;
+    if (before !== li.nextElementSibling) list.insertBefore(li, before);
+  };
+  const end = (e) => {
+    if (e.pointerId !== pointer) return;
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", end);
+    li.classList.remove("is-dragging");
+    shop.dragging = false;
+    const keys = [...list.children].map((row) => row.dataset.key);
+    shopSend("Shopping order", { method: "PUT", path: "/api/shopping/order", body: { store: shopStore(), keys } });
+  };
+  window.addEventListener("pointermove", move, { passive: false });
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+}
+
+// Suggestions while typing: "Buy again" first, "Don't buy again" last.
+let suggestTimer;
+const VERDICT_RANK = (p) => (!p.rating ? 1 : p.rating.buy_again ? 0 : 2);
+
+async function suggestProducts(q) {
+  let products = [];
+  try {
+    if (state.offline) throw new NetworkError();
+    ({ products } = await api("GET", `/api/products?${new URLSearchParams({ verdict: "all", q, sort: "name" })}`,
+      undefined, { retries: 0 }));
+  } catch (err) {
+    if (!err.offline) throw err;
+    const copy = await Known.load();
+    products = copy ? filterKnown(copy.products, { verdict: "all", q, store: "", category: "", sort: "name" }) : [];
+  }
+  return products.sort((a, b) => VERDICT_RANK(a) - VERDICT_RANK(b)).slice(0, 8);
+}
+
+function renderSuggestions(q, products) {
+  const box = $("#shop-suggestions");
+  const form = $("#shop-add");
+  const pick = (fn) => () => {
+    fn();
+    form.reset();
+    box.hidden = true;
+    form.q.focus();
+  };
+  box.replaceChildren(
+    ...products.map((p) => {
+      const b = el("button", { type: "button" },
+        el("span", { class: "name", text: p.name }),
+        p.rating ? verdictWord(p.rating.buy_again) : el("span", { class: "meta", text: "Not rated" }),
+        p.brand ? el("span", { class: "meta", text: p.brand }) : null);
+      b.addEventListener("click", () => {
+        if (!shoppingOk(p)) return;
+        pick(() => addToShopping({ product: p, quantity: form.quantity.value.trim() }))();
+      });
+      return el("li", {}, b);
+    }),
+    (() => {
+      const b = el("button", { type: "button" }, el("span", { text: `Add "${q}" as text` }));
+      b.addEventListener("click", pick(() => addToShopping({ text: q, quantity: form.quantity.value.trim() })));
+      return el("li", {}, b);
+    })(),
+  );
+  box.hidden = false;
+}
+
+$("#shop-add").q.addEventListener("input", (ev) => {
+  clearTimeout(suggestTimer);
+  const q = ev.currentTarget.value.trim();
+  if (!q) {
+    $("#shop-suggestions").hidden = true;
+    return;
+  }
+  suggestTimer = setTimeout(async () => {
+    try {
+      const products = await suggestProducts(q);
+      if ($("#shop-add").q.value.trim() === q) renderSuggestions(q, products);
+    } catch (err) {
+      showError($("#shop-message"), err);
+    }
+  }, 200);
+});
+
+// Enter: a product with exactly this name, otherwise the text.
+$("#shop-add").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const q = form.q.value.trim();
+  if (!q) return;
+  const products = await suggestProducts(q).catch(() => []);
+  const exact = products.find((p) => p.name.toLowerCase() === q.toLowerCase());
+  if (exact && !shoppingOk(exact)) return;
+  addToShopping(exact ? { product: exact, quantity: form.quantity.value.trim() } : { text: q, quantity: form.quantity.value.trim() });
+  form.reset();
+  $("#shop-suggestions").hidden = true;
+});
+
+$("#p-shop").addEventListener("click", () => {
+  const p = state.product;
+  if (!p || !shoppingOk(p)) return;
+  addToShopping({ product: p });
+  showInfo($("#p-message"), `${p.name} is on the shopping list.`);
+});
+
 // ---- Two-factor login (account) -------------------------------------------
 
 async function showSecurity() {
@@ -1524,6 +1919,7 @@ function renderProduct(p, note) {
   // From the offline copy: new ratings and prices wait in the outbox, but
   // changing or deleting the product needs the connection.
   if (p.ratings === null) for (const sel of ["#p-edit", "#p-delete"]) $(sel).hidden = true;
+  $("#p-shop").hidden = !editable;
   if (!editable && !$("#p-message").textContent) showInfo($("#p-message"), "This list is read only for you.");
 
   const box = $("#p-verdict");

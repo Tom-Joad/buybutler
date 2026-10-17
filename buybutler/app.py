@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import __version__, auth, config, db, images, lists, off, prices, twofactor
+from . import __version__, auth, config, db, images, lists, off, prices, shopping, twofactor
 
 log = logging.getLogger("buybutler")
 
@@ -239,6 +239,59 @@ class ProductPatch(BaseModel):
 
 def _unit(v: str) -> str:
     return _text(v, 20)
+
+
+class ShoppingIn(BaseModel):
+    client_id: ClientId = None
+    product_id: int | None = None
+    text: str = ""
+    quantity: str = ""
+    store: str = ""
+
+    @field_validator("text")
+    @classmethod
+    def _text(cls, v: str) -> str:
+        return _text(v, shopping.TEXT_MAX)
+
+    @field_validator("quantity")
+    @classmethod
+    def _quantity(cls, v: str) -> str:
+        return _text(v, shopping.QUANTITY_MAX)
+
+    @field_validator("store")
+    @classmethod
+    def _store(cls, v: str) -> str:
+        return _text(v, shopping.STORE_MAX)
+
+
+class ShoppingPatch(BaseModel):
+    checked: bool | None = None
+    text: str | None = None
+    quantity: str | None = None
+    store: str | None = None
+
+    @field_validator("text")
+    @classmethod
+    def _text(cls, v: str | None) -> str | None:
+        return None if v is None else _text(v, shopping.TEXT_MAX)
+
+    @field_validator("quantity")
+    @classmethod
+    def _quantity(cls, v: str | None) -> str | None:
+        return None if v is None else _text(v, shopping.QUANTITY_MAX)
+
+    @field_validator("store")
+    @classmethod
+    def _store(cls, v: str | None) -> str | None:
+        return None if v is None else _text(v, shopping.STORE_MAX)
+
+
+class ShoppingOrder(BaseModel):
+    store: str = Field(default="", max_length=shopping.STORE_MAX)
+    keys: list[Annotated[str, Field(max_length=shopping.TEXT_MAX + 2)]] = Field(max_length=2000)
+
+
+ItemId = Annotated[str, Field(pattern=r"^[A-Za-z0-9-]{16,64}$")]
 
 
 class PriceIn(BaseModel):
@@ -1489,6 +1542,67 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         conn.commit()
         images.delete(settings.images, "ratings", row["photo"])
         return _rating(_load_rating(conn, user, rating_id))
+
+    # ---- shopping list -----------------------------------------------------
+
+    def shopping_json(conn: sqlite3.Connection, list_id: int, store: str) -> dict:
+        return {
+            "list_id": list_id,
+            "store": store,
+            "stores": shopping.stores(conn, list_id),
+            "items": shopping.items(conn, list_id, store, _image_url),
+        }
+
+    @app.get("/api/shopping")
+    def get_shopping(user: CurrentUser, current: CurrentList, conn: Conn,
+                     store: str = Query("", max_length=shopping.STORE_MAX)) -> dict:
+        return shopping_json(conn, current[0], store.strip())
+
+    @app.post("/api/shopping", status_code=201)
+    def add_shopping(body: ShoppingIn, user: CurrentUser, current: CurrentList, conn: Conn,
+                     response: Response) -> dict:
+        _check_write(current[1])
+        try:
+            client_id, created = shopping.add(conn, current[0], user.id, body.client_id, body.product_id,
+                                              body.text, body.quantity, body.store)
+        except shopping.ShoppingError as exc:
+            raise HTTPException(404 if "not found" in str(exc) else 409 if "used" in str(exc) else 422,
+                                str(exc)) from None
+        if created:
+            log.info("shopping_item_added", extra={"list_id": current[0], "product": body.product_id is not None})
+        else:
+            response.status_code = 200
+        return shopping.get(conn, current[0], client_id, _image_url)
+
+    @app.patch("/api/shopping/{item_id}")
+    def change_shopping(item_id: ItemId, body: ShoppingPatch, user: CurrentUser, current: CurrentList,
+                        conn: Conn) -> dict | None:
+        _check_write(current[1])
+        try:
+            shopping.update(conn, current[0], item_id, user.id, body.model_dump(exclude_none=True))
+        except LookupError:
+            raise HTTPException(404, "item not found") from None
+        # None: unticked while the product was on the list again, so this
+        # entry went (see shopping.update).
+        return shopping.get(conn, current[0], item_id, _image_url)
+
+    @app.delete("/api/shopping/{item_id}", status_code=204)
+    def remove_shopping(item_id: ItemId, user: CurrentUser, current: CurrentList, conn: Conn) -> None:
+        _check_write(current[1])
+        if not shopping.remove(conn, current[0], item_id):
+            raise HTTPException(404, "item not found")
+
+    @app.post("/api/shopping/clear-checked")
+    def clear_shopping(user: CurrentUser, current: CurrentList, conn: Conn) -> dict:
+        _check_write(current[1])
+        removed = shopping.clear_checked(conn, current[0])
+        log.info("shopping_cleared", extra={"list_id": current[0], "items": removed})
+        return {"removed": removed}
+
+    @app.put("/api/shopping/order", status_code=204)
+    def order_shopping(body: ShoppingOrder, user: CurrentUser, current: CurrentList, conn: Conn) -> None:
+        _check_write(current[1])
+        shopping.set_order(conn, current[0], body.store.strip(), body.keys)
 
     # ---- pictures and interface -------------------------------------------
 

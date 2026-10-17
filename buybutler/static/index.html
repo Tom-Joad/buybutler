@@ -22,6 +22,7 @@
   <a class="wordmark" href="#/scan">Buybutler<span class="stop">.</span></a>
   <nav>
     <a href="#/scan" data-nav="scan">Scan</a>
+    <a href="#/shop" data-nav="shop">Shop</a>
     <a href="#/products" data-nav="lists">Products</a>
     <a href="#/account" data-nav="account">Account</a>
   </nav>
@@ -39,7 +40,7 @@
 </div>
 
 <!-- Shown while the app runs on the copy on this phone. -->
-<p class="notice" id="offline-bar" hidden>No connection: verdicts and prices from the copy on this phone. New ratings and prices wait until the connection is back.</p>
+<p class="notice" id="offline-bar" hidden>No connection: verdicts and prices from the copy on this phone. New ratings, prices and shopping changes wait until the connection is back.</p>
 <!-- A new version was installed in the background. -->
 <div class="notice notice--update" id="update-bar" hidden>
   <span>A new version of Buybutler is ready.</span>
@@ -118,6 +119,7 @@
       <a class="btn btn--primary" id="p-rate" href="#">Rate again</a>
       <a class="btn btn--outline" id="p-edit" href="#">Edit product</a>
     </div>
+    <button class="btn btn--secondary" id="p-shop" type="button">Add to shopping</button>
     <h2 class="section-title">Prices</h2>
     <div class="price-summary" id="p-price-summary"></div>
     <ol class="history" id="p-prices"></ol>
@@ -360,6 +362,40 @@
       </label>
       <button class="btn btn--outline btn--danger" type="submit">Delete list for good</button>
     </form>
+  </section>
+
+  <!-- Shopping list -->
+  <section class="view" id="view-shop" hidden>
+    <h1>Shopping</h1>
+    <label class="field">
+      <span class="label">Store: its order, and the items for it</span>
+      <select id="shop-store"></select>
+    </label>
+    <form id="shop-add" class="stack" autocomplete="off">
+      <div class="shop-add-row">
+        <label class="field">
+          <span class="label">Add a product, or anything else</span>
+          <input name="q" maxlength="100" placeholder="Milk, bread rolls …" autocomplete="off" enterkeyhint="done">
+        </label>
+        <label class="field">
+          <span class="label">How many</span>
+          <input name="quantity" maxlength="20" placeholder="2x" autocomplete="off">
+        </label>
+        <button class="btn btn--secondary" type="submit">Add</button>
+      </div>
+      <ul class="shop-suggestions" id="shop-suggestions" hidden></ul>
+    </form>
+    <p class="message" id="shop-message" role="alert"></p>
+    <ul class="shop-items" id="shop-open"></ul>
+    <p class="meta" id="shop-empty" hidden>Nothing to buy. Add products here, or with "Add to shopping" on a product.</p>
+    <p class="meta" id="shop-hint" hidden>Drag ≡ to put the items in the order you walk through the store; Buybutler remembers it for next time.</p>
+    <details class="shop-others" id="shop-others" hidden>
+      <summary id="shop-others-title"></summary>
+      <ul class="shop-items" id="shop-other-items"></ul>
+    </details>
+    <h2 class="section-title" id="shop-done-title" hidden>In the basket</h2>
+    <ul class="shop-items" id="shop-done"></ul>
+    <button class="btn btn--outline" id="shop-clear" type="button" hidden>Clear ticked</button>
   </section>
 
   <!-- Account -->

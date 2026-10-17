@@ -14,6 +14,9 @@ lowest and highest regular price.
 
 Every entry keeps the time it was made and last changed.
 
+A shared shopping list per list: tap products together (or type anything
+else), tick them off in the shop, in the order you walk through it.
+
 Optional two-factor login per user: a code from an authenticator app, or a
 passkey (fingerprint or face unlock on the phone, no password typed in the
 shop), with one-time recovery codes for a lost phone.
@@ -207,20 +210,47 @@ them in. Changes here ask for the current password.
 Turning two-factor login on ends the user's other sessions. Wrong codes
 count towards the same lockout as wrong passwords.
 
+## Shopping list
+
+**Shop** holds one shopping list per list, shared by its members.
+
+- **Add:** type in the field at the top. Products of the list are
+  suggested, "Buy again" first; a "Don't buy again" product asks first and
+  shows the reason. Anything else ("bread rolls") goes on as text. A
+  quantity ("2x") is optional. On a product page, **Add to shopping** puts
+  it on the list; a product is never on it twice.
+- **In the shop:** tap an item to tick it off; it moves to **In the
+  basket**, with a **Price** link for products. **Clear ticked** removes the
+  ticked items. **Edit** changes the quantity, the text, or ties an item to
+  one store.
+- **Order:** pick the store at the top and drag the items by **≡** into the
+  order you walk through it. Buybutler remembers the place of each product
+  (and each text) per store, so next time they come up in the same order;
+  new items go to the end until placed once. Items tied to another store
+  are folded away below.
+- **Together:** while the shopping list is open, it is updated every 5
+  seconds, so two people in the shop see each other's ticks. Ticking an
+  item that someone ticked already keeps it ticked.
+- **Without reception:** changes show at once and are sent when the
+  connection is back; the last shopping list seen opens offline.
+
+Viewers of a list see its shopping list but can't change it.
+
 ## Offline
 
 Once opened over HTTPS, the app keeps itself on the phone (a service
 worker) and opens without a connection. While online it also keeps a copy
 of the **rated** products of the current list: verdict, stars, reason,
-store and prices. A scan looks there first, so the verdict shows at once.
+store and prices, and the shopping list as last seen. A scan looks there first, so the verdict shows at once.
 
 Without a connection:
 
 - a bar at the top says that the copy on the phone is shown;
 - scanning, the product page (newest verdict and prices, no history) and
   the product list work from the copy;
-- new ratings, prices and products wait on the phone and are sent when the
-  connection is back; changing or deleting a product needs the connection;
+- new ratings, prices and products, and changes to the shopping list, wait
+  on the phone and are sent when the connection is back; changing or
+  deleting a product needs the connection;
 - an unknown barcode is "not known offline" and can be added by hand.
 
 Product pictures are kept as they are viewed (the newest 300). **Logging

@@ -198,6 +198,40 @@ MIGRATIONS: list[str] = [
         expires_at  TEXT NOT NULL
     );
     """,
+    # 6: one shopping list per list. An item is a product of the list or a
+    # free text; client_id names it from the phone (also before the server
+    # knew it). store_order remembers where an item goes in a store's walk,
+    # per product ("p:<id>") or free text ("t:<text>").
+    """
+    CREATE TABLE shopping_items (
+        id          INTEGER PRIMARY KEY,
+        list_id     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        product_id  INTEGER REFERENCES products(id) ON DELETE CASCADE,
+        text        TEXT NOT NULL DEFAULT '',
+        quantity    TEXT NOT NULL DEFAULT '',
+        store       TEXT NOT NULL DEFAULT '',
+        checked_at  TEXT,
+        checked_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        client_id   TEXT NOT NULL UNIQUE,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        CHECK (product_id IS NOT NULL OR text <> '')
+    );
+    CREATE INDEX shopping_items_list ON shopping_items(list_id);
+    CREATE UNIQUE INDEX shopping_items_open_product ON shopping_items(list_id, product_id)
+        WHERE product_id IS NOT NULL AND checked_at IS NULL;
+
+    CREATE TABLE store_order (
+        list_id     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        store       TEXT NOT NULL COLLATE NOCASE,
+        item_key    TEXT NOT NULL,
+        position    INTEGER NOT NULL,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        PRIMARY KEY (list_id, store, item_key)
+    );
+    """,
 ]
 
 
