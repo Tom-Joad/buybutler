@@ -801,3 +801,26 @@ input[type="date"] {
   gap: var(--space-6) var(--space-20);
   padding-left: 2.4em;
 }
+
+/* ---- Offline and update notices ------------------------------------------ */
+
+.notice {
+  margin: 0;
+  padding: var(--space-10) var(--space-20);
+  font: var(--text-caption);
+  color: var(--text-body);
+  background: var(--sand);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.notice--update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10);
+}
+
+.notice--update .btn {
+  padding: 8px 16px;
+}

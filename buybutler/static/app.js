@@ -22,6 +22,7 @@ const state = {
   verdict: "buy",
   flash: null, // { text, error } shown once on the next view
   holdJob: null, // an outbox job the user is still adding to
+  offline: false, // started without a connection: data from this phone only
   lists: null, // the user's lists with their role; null until loaded
   listId: null, // the list everything happens in (sent as a header)
   sentProducts: {}, // outbox job id -> product id, once its product was created
@@ -89,6 +90,7 @@ async function api(method, path, body, { retries = RETRY_DELAYS.length, list } =
   // A wrong password or code during the login is no reason to go to the login.
   if (res.status === 401 && !path.startsWith("/api/session")) {
     state.user = null;
+    forgetOffline();
     go("#/login");
     throw new ApiError(401, "Logged out");
   }
@@ -100,6 +102,127 @@ async function api(method, path, body, { retries = RETRY_DELAYS.length, list } =
     throw new ApiError(res.status, detail || `Request failed (${res.status})`);
   }
   return data;
+}
+
+// ---- Offline copy ---------------------------------------------------------
+//
+// The rated products of the current list (verdict, stars, reason, prices)
+// are kept on the phone and refreshed while online, so a scan shows the
+// verdict at once, also without reception. Logging out clears the copy,
+// the user kept for an offline start and the cached pictures.
+
+const USER_KEY = "buybutler.user";
+const LISTS_KEY = "buybutler.lists";
+
+const Known = {
+  copy: null, // { list_id, fetched, products } of the current list
+  fetched: 0, // when the copy was last refreshed, in ms
+
+  async load() {
+    if (!state.listId) return null;
+    if (this.copy && this.copy.list_id === state.listId) return this.copy;
+    try {
+      this.copy = (await idb("known", "readonly", (s) => s.get(state.listId))) || null;
+    } catch {
+      this.copy = null;
+    }
+    return this.copy;
+  },
+
+  // Refreshed at most once a minute unless forced (after a change).
+  async refresh(force = false) {
+    if (!state.user || !state.listId || state.offline) return;
+    if (!force && Date.now() - this.fetched < 60000 && this.copy && this.copy.list_id === state.listId) return;
+    this.fetched = Date.now();
+    try {
+      const data = await api("GET", "/api/offline", undefined, { retries: 0 });
+      this.copy = { list_id: data.list_id, fetched: data.generated_at, products: data.products };
+      await idb("known", "readwrite", (s) => s.put(this.copy));
+    } catch {
+      // Offline or no storage: the copy stays as it was.
+    }
+  },
+
+  async byBarcode(barcode) {
+    const copy = await this.load();
+    return copy ? copy.products.find((p) => p.barcode === barcode) || null : null;
+  },
+
+  async byId(id) {
+    const copy = await this.load();
+    return copy ? copy.products.find((p) => p.id === id) || null : null;
+  },
+};
+
+function remember(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Private mode: no offline start, nothing else changes.
+  }
+}
+
+function remembered(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function rememberUser(user) {
+  remember(USER_KEY, { username: user.username, role: user.role, currency: user.currency });
+}
+
+async function forgetOffline() {
+  Known.copy = null;
+  try {
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(LISTS_KEY);
+  } catch {
+    // nothing stored
+  }
+  await idb("known", "readwrite", (s) => s.clear()).catch(() => {});
+  if (window.caches) await caches.delete("buybutler-pictures").catch(() => {});
+}
+
+function offlineNote() {
+  const when = Known.copy ? ` from ${stamp(Known.copy.fetched)}` : "";
+  return `Offline: showing the copy on this phone${when}.`;
+}
+
+// ---- Service worker and updates -------------------------------------------
+
+let reloading = false;
+
+function offerUpdate(worker) {
+  const bar = $("#update-bar");
+  bar.hidden = false;
+  $("#update-reload").onclick = () => {
+    reloading = true;
+    worker.postMessage("activate");
+  };
+}
+
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloading) location.reload();
+  });
+  navigator.serviceWorker.register("/sw.js").then((reg) => {
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+    reg.addEventListener("updatefound", () => {
+      const worker = reg.installing;
+      worker.addEventListener("statechange", () => {
+        // With no controller yet, this is the first install, not an update.
+        if (worker.state === "installed" && navigator.serviceWorker.controller) offerUpdate(worker);
+      });
+    });
+    // An app on the home screen stays open for days; look for a new
+    // version whenever it comes back to the front.
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) reg.update().catch(() => {});
+    });
+  }).catch(() => {});
 }
 
 function uid() {
@@ -117,34 +240,41 @@ function uid() {
 // phone and is sent later, in order. A step's path can name an earlier
 // step ("/api/products/{product}/ratings"); its ID is filled in once known.
 
-const Outbox = (() => {
+// One database for both: "jobs" (the outbox) and "known" (the offline copy
+// of rated products, one record per list).
+const idb = (() => {
   let opening = null;
   const open = () => {
     opening = opening || new Promise((resolve, reject) => {
-      const req = indexedDB.open("buybutler", 1);
-      req.onupgradeneeded = () => req.result.createObjectStore("jobs", { keyPath: "id" });
+      const req = indexedDB.open("buybutler", 2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("jobs")) db.createObjectStore("jobs", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("known")) db.createObjectStore("known", { keyPath: "list_id" });
+      };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
     return opening;
   };
-  const run = async (mode, fn) => {
+  return async (store, mode, fn) => {
     const db = await open();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction("jobs", mode);
-      const req = fn(tx.objectStore("jobs"));
+      const tx = db.transaction(store, mode);
+      const req = fn(tx.objectStore(store));
       tx.oncomplete = () => resolve(req ? req.result : undefined);
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
   };
-  return {
-    all: () => run("readonly", (s) => s.getAll()),
-    get: (id) => run("readonly", (s) => s.get(id)),
-    put: (job) => run("readwrite", (s) => s.put(job)),
-    remove: (id) => run("readwrite", (s) => s.delete(id)),
-  };
 })();
+
+const Outbox = {
+  all: () => idb("jobs", "readonly", (s) => s.getAll()),
+  get: (id) => idb("jobs", "readonly", (s) => s.get(id)),
+  put: (job) => idb("jobs", "readwrite", (s) => s.put(job)),
+  remove: (id) => idb("jobs", "readwrite", (s) => s.delete(id)),
+};
 
 // Pictures are stored as bytes: older Safari versions can't keep a Blob in
 // IndexedDB.
@@ -191,6 +321,7 @@ async function runJob(job, retries) {
     await Outbox.put(job).catch(() => {});
   }
   await Outbox.remove(job.id).catch(() => {});
+  Known.refresh(true);
 }
 
 // Sends a new job now. Returns "sent", or "queued" when the network failed
@@ -261,7 +392,16 @@ async function updateOutboxBadge() {
   if (!$("#view-account").hidden) renderOutbox(jobs);
 }
 
-window.addEventListener("online", syncOutbox);
+window.addEventListener("online", () => {
+  // Started offline: check the session and load fresh data now.
+  if (state.offline) {
+    state.offline = false;
+    state.user = null;
+    state.lists = null;
+    route();
+  }
+  syncOutbox();
+});
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) syncOutbox();
 });
@@ -418,18 +558,32 @@ async function route() {
 
   if (!state.user && parts[0] !== "login") {
     try {
-      state.user = await api("GET", "/api/session");
+      state.user = await api("GET", "/api/session", undefined, { retries: 1 });
+      state.offline = false;
+      rememberUser(state.user);
     } catch (err) {
-      if (err.offline) {
+      const known = err.offline ? remembered(USER_KEY) : null;
+      if (known) {
+        // No connection: work with what this phone has, read-only, until
+        // the connection is back (see goOnline).
+        state.user = known;
+        state.offline = true;
+        state.lists = remembered(LISTS_KEY);
+        state.listId = storedListId();
+        renderListBar();
+        await Known.load();
+      } else if (err.offline) {
         show("view-scan", "scan");
         showError($("#scan-message"), err);
         return;
+      } else {
+        await forgetOffline();
+        go("#/login");
+        return;
       }
-      go("#/login");
-      return;
     }
   }
-  if (state.user && state.lists === null) {
+  if (state.user && state.lists === null && !state.offline) {
     try {
       await loadLists();
     } catch (err) {
@@ -446,6 +600,8 @@ async function route() {
     return;
   }
   if (state.user) syncOutbox();
+  if (state.user) Known.refresh();
+  $("#offline-bar").hidden = !state.offline;
 
   try {
     switch (parts[0]) {
@@ -513,6 +669,7 @@ function storedListId() {
 async function loadLists() {
   const { lists } = await api("GET", "/api/lists");
   state.lists = lists;
+  remember(LISTS_KEY, lists.map((l) => ({ id: l.id, name: l.name, role: l.role })));
   const wanted = state.listId || storedListId();
   const pick = lists.find((l) => l.id === wanted) || lists[0] || null;
   setList(pick ? pick.id : null);
@@ -803,7 +960,12 @@ function showLogin() {
 }
 
 function finishLogin(user) {
+  const before = remembered(USER_KEY);
+  // Another user on this phone never sees the previous one's copy.
+  if (before && before.username !== user.username) forgetOffline();
   state.user = { username: user.username, role: user.role, currency: user.currency };
+  state.offline = false;
+  rememberUser(state.user);
   state.lists = null;
   pendingLogin = null;
   $("#login-form").password.value = "";
@@ -1176,8 +1338,10 @@ $("#password-form").addEventListener("submit", async (ev) => {
 
 $("#logout").addEventListener("click", async () => {
   await api("DELETE", "/api/session").catch(() => {});
+  await forgetOffline();
   state.user = null;
   state.lists = null;
+  state.offline = false;
   go("#/login");
 });
 
@@ -1295,6 +1459,13 @@ $("#manual-form").addEventListener("submit", async (ev) => {
 
 async function lookup(barcode) {
   const msg = $("#scan-message");
+  // A rated product of this list shows at once from the copy; its page
+  // fetches the rest when there is a connection.
+  const known = await Known.byBarcode(barcode);
+  if (known) {
+    go(`#/product/${known.id}`);
+    return;
+  }
   showInfo(msg, `Looking up ${barcode}`);
   try {
     const r = await api("GET", `/api/lookup?barcode=${encodeURIComponent(barcode)}`);
@@ -1310,6 +1481,7 @@ async function lookup(barcode) {
     go(`#/new?barcode=${encodeURIComponent(barcode)}`);
   } catch (err) {
     if (err.offline && canEdit()) {
+      // Not in the copy: not rated yet in this list, or never seen.
       state.suggestion = { barcode, lookup: "offline" };
       go(`#/new?barcode=${encodeURIComponent(barcode)}`);
       return;
@@ -1321,14 +1493,37 @@ async function lookup(barcode) {
 // ---- Product view ---------------------------------------------------------
 
 async function showProduct(id) {
-  const p = await api("GET", `/api/products/${id}`);
+  const known = await Known.byId(id);
+  // Started offline, the bar at the top says so already.
+  if (known) renderProduct({ ...known, ratings: null, prices: null }, "");
+  if (state.offline && known) return;
+  let p;
+  try {
+    p = await api("GET", `/api/products/${id}`, undefined, known ? { retries: 1 } : {});
+  } catch (err) {
+    if (err.offline && known) {
+      showInfo($("#p-message"), offlineNote());
+      return;
+    }
+    throw err;
+  }
+  if (location.hash.split("?")[0] !== `#/product/${id}`) return; // the user moved on meanwhile
+  renderProduct(p, null);
+}
+
+// ratings and prices are null for a product from the offline copy: only the
+// newest verdict and the price summary are kept on the phone.
+function renderProduct(p, note) {
   state.product = p;
   show("view-product", "lists");
-  showInfo($("#p-message"), "");
+  showInfo($("#p-message"), note || "");
   takeFlash($("#p-message"));
   // Viewers see everything, but no way to change it.
   const editable = p.role !== "viewer";
   for (const sel of ["#p-rate", "#p-edit", "#p-add-price", "#p-delete"]) $(sel).hidden = !editable;
+  // From the offline copy: new ratings and prices wait in the outbox, but
+  // changing or deleting the product needs the connection.
+  if (p.ratings === null) for (const sel of ["#p-edit", "#p-delete"]) $(sel).hidden = true;
   if (!editable && !$("#p-message").textContent) showInfo($("#p-message"), "This list is read only for you.");
 
   const box = $("#p-verdict");
@@ -1351,6 +1546,8 @@ async function showProduct(id) {
 
   const img = $("#p-image");
   img.hidden = !p.image;
+  // Offline, a picture that was never viewed isn't on the phone.
+  img.onerror = () => { img.hidden = true; };
   if (p.image) img.src = p.image;
   $("#p-name").textContent = p.name;
   $("#p-meta").textContent = [p.brand, p.quantity, p.category, p.barcode].filter(Boolean).join(" · ");
@@ -1391,7 +1588,7 @@ async function showProduct(id) {
 
   const list = $("#p-history");
   list.replaceChildren(
-    ...p.ratings.map((r) =>
+    ...(p.ratings || []).map((r) =>
       el("li", {},
         el("div", { class: "head" }, verdictWord(r.buy_again), stars(r.stars),
           editable ? el("a", { class: "edit", href: `#/product/${p.id}/rating/${r.id}`, text: "Edit" }) : null),
@@ -1406,7 +1603,8 @@ async function showProduct(id) {
         }),
       )),
   );
-  if (!p.ratings.length) list.append(el("li", { class: "meta", text: "No ratings yet." }));
+  if (!p.ratings) list.append(el("li", { class: "meta", text: "The history is loaded with a connection." }));
+  else if (!p.ratings.length) list.append(el("li", { class: "meta", text: "No ratings yet." }));
 
   $("#p-stamps").textContent = `Added ${stamp(p.created_at)} · changed ${stamp(p.updated_at)}`
     + (p.source === "openfoodfacts" ? " · data from Open Food Facts" : "");
@@ -1570,7 +1768,14 @@ async function showRateForm(productId, ratingId, pendingJobId = null) {
     form.dataset.pending = job.id;
   } else {
     await loadFacets();
-    p = await api("GET", `/api/products/${productId}`);
+    try {
+      p = await api("GET", `/api/products/${productId}`, undefined, state.offline ? { retries: 0 } : {});
+    } catch (err) {
+      // A new rating also works offline; it waits in the outbox.
+      const known = err.offline && !ratingId ? await Known.byId(productId) : null;
+      if (!known) throw err;
+      p = { ...known, ratings: [] };
+    }
   }
   state.product = p;
   show("view-rate", "scan");
@@ -1694,7 +1899,15 @@ $("#r-delete").addEventListener("click", async () => {
 
 async function showPriceForm(productId, priceId) {
   await loadFacets();
-  const p = await api("GET", `/api/products/${productId}`);
+  let p;
+  try {
+    p = await api("GET", `/api/products/${productId}`, undefined, state.offline ? { retries: 0 } : {});
+  } catch (err) {
+    // A new price also works offline; it waits in the outbox.
+    const known = err.offline && !priceId ? await Known.byId(productId) : null;
+    if (!known) throw err;
+    p = { ...known, prices: [] };
+  }
   state.product = p;
   show("view-price", "lists");
   const form = $("#price-form");
@@ -1815,8 +2028,18 @@ async function loadList() {
     category: form.category.value,
     sort: form.sort.value,
   });
-  const { products } = await api("GET", `/api/products?${q}`);
-  $("#l-count").textContent = `${products.length} ${products.length === 1 ? "product" : "products"}`;
+  let products;
+  let note = "";
+  try {
+    if (state.offline) throw new NetworkError();
+    ({ products } = await api("GET", `/api/products?${q}`));
+  } catch (err) {
+    const copy = err.offline ? await Known.load() : null;
+    if (!copy) throw err;
+    products = filterKnown(copy.products, Object.fromEntries(q));
+    note = ` · ${offlineNote()}`;
+  }
+  $("#l-count").textContent = `${products.length} ${products.length === 1 ? "product" : "products"}${note}`;
   $("#l-items").replaceChildren(
     ...products.map((p) =>
       el("li", {},
@@ -1831,6 +2054,30 @@ async function loadList() {
               p.price ? el("span", { class: "list-price", text: money(p.price.last.amount_cents) }) : null),
             p.rating && p.rating.reason ? el("span", { class: "why", text: p.rating.reason }) : null)))),
   );
+}
+
+// The server's filters, applied to the offline copy (rated products only).
+function filterKnown(products, f) {
+  const q = f.q.trim().toLowerCase();
+  const found = products.filter((p) => {
+    const r = p.rating;
+    if (f.verdict === "unrated") return false;
+    if (f.verdict === "buy" && !r.buy_again) return false;
+    if (f.verdict === "skip" && r.buy_again) return false;
+    if (q && ![p.name, p.brand, p.category, p.barcode, r.reason].some((v) => (v || "").toLowerCase().includes(q))) return false;
+    if (f.store && (r.store || "").toLowerCase() !== f.store.toLowerCase()) return false;
+    if (f.category && (p.category || "").toLowerCase() !== f.category.toLowerCase()) return false;
+    return true;
+  });
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const last = (p) => (p.price ? p.price.last.amount_cents : Infinity);
+  const sorts = {
+    recent: (a, b) => b.rating.rated_on.localeCompare(a.rating.rated_on) || b.rating.created_at.localeCompare(a.rating.created_at),
+    name: byName,
+    stars: (a, b) => (b.rating.stars || 0) - (a.rating.stars || 0) || byName(a, b),
+    price: (a, b) => last(a) - last(b) || byName(a, b),
+  };
+  return found.sort(sorts[f.sort] || sorts.recent);
 }
 
 for (const b of document.querySelectorAll(".tabs button")) {

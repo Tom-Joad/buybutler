@@ -4,6 +4,23 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [Unreleased]
+
+### Added
+- **Offline mode.** The app keeps itself on the phone and opens without a
+  connection. The rated products of the current list (verdict, stars,
+  reason, store, prices) are kept on the phone and refreshed while online.
+- A scan shows the verdict from that copy at once, also without reception;
+  the product page and the product list work from it offline, with a bar
+  that says so. New ratings and prices can be added offline and are sent
+  later.
+- Product pictures are kept as they are viewed (the newest 300).
+- "A new version is ready" with **Reload** after an update on the server.
+
+### Changed
+- Logging out deletes the offline copy and the kept pictures from the
+  phone; so does a session the server ended.
+
 ## [0.8.0] - 2026-10-17
 
 ### Added

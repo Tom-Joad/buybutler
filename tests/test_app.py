@@ -652,3 +652,48 @@ def test_households_cant_reuse_a_client_id(logged_in, settings):
     logged_in.post("/api/products", json={"name": "x", "client_id": CID}, headers=H)
     other = other_user_with_list(logged_in, settings)
     assert other.post("/api/products", json={"name": "y", "client_id": CID}, headers=H).status_code == 409
+
+
+def test_offline_copy_holds_rated_products_of_the_list(logged_in, settings):
+    rated = make_product(logged_in, name="Rated", barcode="4000000000002")
+    rate(logged_in, rated["id"], buy_again=False, stars=2, reason="Too sweet")
+    add_price(logged_in, rated["id"])
+    make_product(logged_in, name="Not rated")
+    r = logged_in.get("/api/offline")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    data = r.json()
+    assert data["generated_at"].endswith("Z")
+    [p] = data["products"]
+    assert p["name"] == "Rated" and p["barcode"] == "4000000000002"
+    assert p["rating"]["reason"] == "Too sweet" and p["rating"]["buy_again"] is False
+    assert p["price"]["last"]["amount_cents"] > 0 and p["role"] == "owner"
+    # Another user's list stays out.
+    other = other_user_with_list(logged_in, settings)
+    assert other.get("/api/offline").json()["products"] == []
+
+
+def test_offline_copy_needs_login(client):
+    assert client.get("/api/offline").status_code == 401
+
+
+def test_service_worker_lists_the_app_shell(client):
+    r = client.get("/sw.js")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/javascript")
+    assert r.headers["cache-control"] == "no-cache"
+    body = r.text
+    assert "__FILES__" not in body and "__VERSION__" not in body
+    assert '"/static/app.js"' in body and '"/"' in body
+    assert "writer.js" not in body
+
+
+def test_service_worker_changes_with_any_static_file(tmp_path, monkeypatch):
+    import shutil
+
+    from buybutler import app as app_module
+
+    static = tmp_path / "static"
+    shutil.copytree(app_module.STATIC_DIR, static)
+    monkeypatch.setattr(app_module, "STATIC_DIR", static)
+    before = app_module.service_worker()
+    (static / "app.css").write_text((static / "app.css").read_text() + "\n/* changed */\n")
+    assert app_module.service_worker() != before
