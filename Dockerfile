@@ -1,7 +1,7 @@
 # The barcode decoder for the browser comes from npm. This stage only copies
 # its files; Node itself doesn't reach the final image.
 # Pinned by digest (a multi-arch index); Dependabot proposes new digests.
-FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS vendor
+FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS vendor
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
