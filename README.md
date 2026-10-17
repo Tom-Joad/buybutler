@@ -18,7 +18,10 @@ Optional two-factor login per user: a code from an authenticator app, or a
 passkey (fingerprint or face unlock on the phone, no password typed in the
 shop), with one-time recovery codes for a lost phone.
 
-Made for the shop's poor reception: requests that get no answer are
+Made for the shop's poor reception: the app itself stays on the phone and
+opens without a connection, and the rated products of the current list are
+kept on the phone, so a scan shows the verdict at once, with or without
+reception. Requests that get no answer are
 repeated, and new ratings, products and prices that still can't be sent are
 saved on the phone and sent when the connection is back ("2 waiting" in the
 top bar, the list under **Account**). A repeated request never creates an
@@ -204,6 +207,27 @@ them in. Changes here ask for the current password.
 Turning two-factor login on ends the user's other sessions. Wrong codes
 count towards the same lockout as wrong passwords.
 
+## Offline
+
+Once opened over HTTPS, the app keeps itself on the phone (a service
+worker) and opens without a connection. While online it also keeps a copy
+of the **rated** products of the current list: verdict, stars, reason,
+store and prices. A scan looks there first, so the verdict shows at once.
+
+Without a connection:
+
+- a bar at the top says that the copy on the phone is shown;
+- scanning, the product page (newest verdict and prices, no history) and
+  the product list work from the copy;
+- new ratings, prices and products wait on the phone and are sent when the
+  connection is back; changing or deleting a product needs the connection;
+- an unknown barcode is "not known offline" and can be added by hand.
+
+Product pictures are kept as they are viewed (the newest 300). **Logging
+out deletes the copy and the pictures from the phone.** When a new version
+of Buybutler is installed on the server, the app shows "A new version is
+ready" with **Reload**.
+
 ## Backups
 
 Back up the whole `/config` folder. The database runs in WAL mode: a plain
@@ -269,6 +293,8 @@ check calls `http://127.0.0.1:8080/health`.
 | Wrong client address in the log | `BUYBUTLER_TRUSTED_PROXIES` doesn't include the reverse proxy |
 | "No connection to Buybutler" | No answer after several tries (network, or the reverse proxy can't reach the container). New entries are kept on the phone and sent later |
 | "1 not sent" in the top bar | The server refused a saved entry (e.g. a value it doesn't accept); **Account** shows why, with **Send now** and **Discard** |
+| No offline start | The app was only opened over plain HTTP, or never opened online since the update; open it once over HTTPS |
+| "A new version is ready" | Buybutler was updated on the server; **Reload** switches to it |
 | Entries waiting on one phone | They live in that browser's storage; clearing the site data or a private tab drops them |
 
 Verify the signature:

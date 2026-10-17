@@ -1,5 +1,7 @@
 """Web app: login, products, ratings, pictures and the interface."""
 
+import hashlib
+import json
 import logging
 import sqlite3
 from collections.abc import Iterator
@@ -19,6 +21,11 @@ from . import __version__, auth, config, db, images, lists, off, prices, twofact
 log = logging.getLogger("buybutler")
 
 STATIC_DIR = Path(__file__).parent / "static"
+SERVICE_WORKER = Path(__file__).parent / "sw.js"
+# Rated products a phone keeps for offline use, at most.
+OFFLINE_MAX = 5000
+# Loaded only to set up an authenticator app; not worth keeping offline.
+NOT_OFFLINE = {"vendor/zxing/writer.js", "vendor/zxing/zxing_writer.wasm"}
 COOKIE = "buybutler_session"
 # The list the phone works in; sent with every request (see list_dep).
 LIST_HEADER = "x-buybutler-list"
@@ -481,6 +488,27 @@ def _load_rating(conn: sqlite3.Connection, user: auth.User, rating_id: int, writ
 
 # ---------------------------------------------------------------------------
 # App
+
+
+def service_worker() -> bytes:
+    """The service worker with the files of the app shell and a hash of
+    their content. Any change to a file changes the worker, so the browser
+    installs the new version (and the page offers a reload)."""
+    files = sorted(
+        f for f in STATIC_DIR.rglob("*")
+        if f.is_file() and f.relative_to(STATIC_DIR).as_posix() not in NOT_OFFLINE
+    )
+    digest = hashlib.sha256(__version__.encode())
+    for f in files:
+        digest.update(f.relative_to(STATIC_DIR).as_posix().encode())
+        digest.update(f.read_bytes())
+    urls = ["/", "/manifest.webmanifest"] + ["/static/" + f.relative_to(STATIC_DIR).as_posix() for f in files]
+    return (
+        SERVICE_WORKER.read_text()
+        .replace("__VERSION__", f"{__version__}-{digest.hexdigest()[:12]}")
+        .replace("__FILES__", json.dumps(urls))
+        .encode()
+    )
 
 
 def create_app(settings: config.Settings | None = None, transport: httpx.BaseTransport | None = None) -> FastAPI:
@@ -1091,13 +1119,17 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             # By the last price paid, cheapest first; products without a price last.
             "price": "last_price IS NULL, last_price ASC, p.name COLLATE NOCASE ASC",
         }[sort]
+        return {"products": product_rows(conn, current, where, args, order, 1000)}
+
+    def product_rows(conn: sqlite3.Connection, current: tuple[int, str], where: list[str], args: list,
+                     order: str, limit: int) -> list[dict]:
         rows = conn.execute(
             "SELECT p.*, ? AS role, lr.id AS lr_id,"
             " (SELECT COUNT(*) FROM ratings c WHERE c.product_id = p.id) AS rating_count,"
             " (SELECT pr.amount_cents FROM prices pr WHERE pr.product_id = p.id"
             "  ORDER BY pr.bought_on DESC, pr.created_at DESC, pr.id DESC LIMIT 1) AS last_price"
             f" FROM products p LEFT JOIN ratings lr ON lr.id = {LATEST}"
-            f" WHERE {' AND '.join(where)} ORDER BY {order} LIMIT 1000",
+            f" WHERE {' AND '.join(where)} ORDER BY {order} LIMIT {int(limit)}",
             [current[1], *args],
         ).fetchall()
         ids = [r["lr_id"] for r in rows if r["lr_id"] is not None]
@@ -1112,11 +1144,15 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             marks = ",".join("?" * len(product_ids))
             for r in conn.execute(prices.SELECT + f" WHERE pr.product_id IN ({marks}) " + prices.ORDER, product_ids):
                 by_product.setdefault(r["product_id"], []).append(r)
-        return {
-            "products": [
-                _product(r, latest.get(r["lr_id"]), r["rating_count"], by_product.get(r["id"])) for r in rows
-            ]
-        }
+        return [_product(r, latest.get(r["lr_id"]), r["rating_count"], by_product.get(r["id"])) for r in rows]
+
+    @app.get("/api/offline")
+    def offline_copy(user: CurrentUser, current: CurrentList, conn: Conn) -> dict:
+        """The rated products of the current list with their verdict and
+        prices, kept on the phone for a shop without reception."""
+        products = product_rows(conn, current, ["p.list_id = ?", "lr.id IS NOT NULL"], [current[0]],
+                                "p.id", OFFLINE_MAX)
+        return {"list_id": current[0], "generated_at": db.now(), "products": products}
 
     @app.get("/api/facets")
     def facets(user: CurrentUser, current: CurrentList, conn: Conn) -> dict:
@@ -1480,6 +1516,12 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     @app.get("/")
     def index() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+
+    worker = service_worker()
+
+    @app.get("/sw.js")
+    def sw() -> Response:
+        return Response(worker, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
     @app.get("/manifest.webmanifest")
     def manifest() -> FileResponse:

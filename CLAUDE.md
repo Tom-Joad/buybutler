@@ -40,6 +40,12 @@ challenge is answered once. Changes to second factors need the current
 password (`confirm_password`). Tests in `tests/test_twofactor.py` use a
 software authenticator, so py_webauthn checks real signatures.
 
+**The offline copy is for reading.** `/api/offline` sends the rated
+products of the current list; the page keeps them in IndexedDB (`known`)
+and the service worker (`buybutler/sw.js`, served at `/sw.js`) keeps only
+the app shell and pictures, never API answers. Logging out and a `401`
+clear both (`forgetOffline`). Writes offline go through the outbox only.
+
 ## Conventions
 
 * Everything in the repository is in English.

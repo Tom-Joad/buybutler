@@ -109,7 +109,8 @@ echo "== interface and API"
 R=$(http GET /); [[ $(status_of "$R") == 200 ]] || fail "/ returned $(status_of "$R")"
 for f in /static/app.js /static/css/tokens.css /static/css/fonts/Anton-Regular-latin.woff2 \
          /static/vendor/zxing/reader.js /static/vendor/zxing/zxing_reader.wasm \
-         /static/vendor/zxing/writer.js /static/vendor/zxing/zxing_writer.wasm /manifest.webmanifest; do
+         /static/vendor/zxing/writer.js /static/vendor/zxing/zxing_writer.wasm /manifest.webmanifest \
+         /sw.js; do
     R=$(http GET "$f"); [[ $(status_of "$R") == 200 ]] || fail "$f returned $(status_of "$R")"
 done
 R=$(http GET /api/products); [[ $(status_of "$R") == 401 ]] || fail "API answered without login"
