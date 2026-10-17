@@ -44,7 +44,7 @@ Only x86-64 is built for now.
 | Tag | Meaning |
 |---|---|
 | `latest` | The latest release |
-| `0.7.0`, `0.7` | A specific release / the latest patch of a minor version |
+| `0.8.0`, `0.8` | A specific release / the latest patch of a minor version |
 | `sha-<commit>` | A specific build |
 | `dev` | Test build from a branch, made by a manual run; not for regular use |
 
