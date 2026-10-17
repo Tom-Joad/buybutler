@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Buybutler</Name>
+  <Repository>ghcr.io/tom-joad/buybutler:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Tom-Joad/buybutler</Support>
+  <Project>https://github.com/Tom-Joad/buybutler</Project>
+  <Overview>
+    Remember which groceries to buy again and which not, with a reason, 1 to 5 stars, the store,
+    the date and a photo. Scan the barcode with the phone camera; product names and pictures come
+    from Open Food Facts. Every entry keeps the time it was made and last changed.&#xD;
+    &#xD;
+    After the first start, create a user in the container's console: buybutler user add NAME.&#xD;
+    &#xD;
+    The camera in the browser needs HTTPS: open it through a reverse proxy with a certificate.
+    The appdata folder holds the database and all photos; back it up.
+  </Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <ExtraParams>--security-opt no-new-privileges</ExtraParams>
+  <Config Name="Web interface" Target="8080" Default="8080" Mode="tcp" Description="Port of the web interface. Point the reverse proxy here." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/buybutler" Mode="rw" Description="Database, pictures and backups. Never delete it." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/buybutler</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User that owns the files (nobody)" Type="Variable" Display="always" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group of the files (users)" Type="Variable" Display="always" Required="true" Mask="false">100</Config>
+  <Config Name="UMASK" Target="UMASK" Default="002" Mode="" Description="002: new files are writable for the users group" Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
+  <Config Name="TZ" Target="TZ" Default="Europe/Berlin" Mode="" Description="Time zone: decides the date a rating gets by default, and the log" Type="Variable" Display="always" Required="false" Mask="false">Europe/Berlin</Config>
+  <Config Name="Product language" Target="BUYBUTLER_OFF_LANGUAGE" Default="de" Mode="" Description="Language of product names from Open Food Facts (two letters)" Type="Variable" Display="always" Required="false" Mask="false">de</Config>
+  <Config Name="Open Food Facts lookup" Target="BUYBUTLER_OFF_LOOKUP" Default="true" Mode="" Description="false: never send barcodes to Open Food Facts; products are entered by hand" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Session days" Target="BUYBUTLER_SESSION_DAYS" Default="90" Mode="" Description="Days a login stays valid without being used" Type="Variable" Display="advanced" Required="false" Mask="false">90</Config>
+  <Config Name="Max upload MB" Target="BUYBUTLER_MAX_UPLOAD_MB" Default="10" Mode="" Description="Largest accepted picture" Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>
+  <Config Name="Trusted proxies" Target="BUYBUTLER_TRUSTED_PROXIES" Default="*" Mode="" Description="Addresses whose X-Forwarded headers are trusted; the reverse proxy's address, or * " Type="Variable" Display="advanced" Required="false" Mask="false">*</Config>
+  <Config Name="Log level" Target="BUYBUTLER_LOG_LEVEL" Default="INFO" Mode="" Description="DEBUG, INFO, WARNING or ERROR" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+</Container>

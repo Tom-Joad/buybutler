@@ -1,0 +1,13 @@
+#!/bin/sh
+# `docker exec <container> buybutler ...` runs as root. When s6-overlay
+# manages the container, act as abc instead, with the same UMASK as the
+# service, so the database and backups keep the PUID/PGID owner.
+if [ "$(id -u)" = 0 ] && [ "$(cat /proc/1/comm 2>/dev/null)" = "s6-svscan" ]; then
+    if [ -n "${UMASK}" ]; then
+        umask "${UMASK}"
+    fi
+    cd /app || exit 1
+    HOME=/config exec /command/s6-setuidgid abc python3 -m buybutler "$@"
+fi
+cd /app || exit 1
+exec python3 -m buybutler "$@"

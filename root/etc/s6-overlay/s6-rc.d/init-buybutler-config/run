@@ -1,0 +1,56 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+
+# Settings are checked here so a typo stops the container with a message
+# instead of a web server that fails later.
+fail() {
+    echo "ERROR: $*"
+    exit 1
+}
+
+check_int() { # name value min max
+    if ! [[ $2 =~ ^[0-9]+$ ]] || (( 10#$2 < $3 || 10#$2 > $4 )); then
+        fail "$1 must be a whole number from $3 to $4, got '$2'"
+    fi
+}
+
+[[ -z ${BUYBUTLER_PORT} ]] || check_int BUYBUTLER_PORT "${BUYBUTLER_PORT}" 1 65535
+[[ -z ${BUYBUTLER_SESSION_DAYS} ]] || check_int BUYBUTLER_SESSION_DAYS "${BUYBUTLER_SESSION_DAYS}" 1 3650
+[[ -z ${BUYBUTLER_MAX_UPLOAD_MB} ]] || check_int BUYBUTLER_MAX_UPLOAD_MB "${BUYBUTLER_MAX_UPLOAD_MB}" 1 100
+
+case "${BUYBUTLER_OFF_LOOKUP,,}" in
+    "" | true | false | 1 | 0 | yes | no | on | off) ;;
+    *) fail "BUYBUTLER_OFF_LOOKUP must be true or false, got '${BUYBUTLER_OFF_LOOKUP}'" ;;
+esac
+
+[[ -z ${BUYBUTLER_OFF_LANGUAGE} || ${BUYBUTLER_OFF_LANGUAGE} =~ ^[A-Za-z]{2}$ ]] \
+    || fail "BUYBUTLER_OFF_LANGUAGE must be a two-letter language code, got '${BUYBUTLER_OFF_LANGUAGE}'"
+
+case "${BUYBUTLER_LOG_LEVEL^^}" in
+    "" | DEBUG | INFO | WARNING | ERROR) ;;
+    *) fail "BUYBUTLER_LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR, got '${BUYBUTLER_LOG_LEVEL}'" ;;
+esac
+
+# /config holds the database, the pictures and backups.
+mkdir -p /config/images /config/backups
+
+if [[ -z ${LSIO_NON_ROOT_USER} ]]; then
+    lsiown abc:abc /config /config/images /config/backups
+    # Anything not owned by abc is handed over: files written as root (a
+    # `docker exec` without the wrapper), or by an earlier PUID/PGID after
+    # the IDs were changed or /config was restored elsewhere. Normally there
+    # is nothing, and the walk stops at the first hit.
+    if [[ -n $(find /config \( ! -user abc -o ! -group abc \) -print -quit) ]]; then
+        lsiown -R abc:abc /config
+    fi
+fi
+
+# Migrate the database now, as abc, so a schema problem stops the container
+# here with a clear message.
+if [[ -z ${LSIO_NON_ROOT_USER} ]]; then
+    HOME=/config s6-setuidgid abc python3 -c 'from buybutler import config, db; db.migrate(config.load().database)' \
+        || fail "the database in /config could not be opened or migrated"
+else
+    python3 -c 'from buybutler import config, db; db.migrate(config.load().database)' \
+        || fail "the database in /config could not be opened or migrated"
+fi

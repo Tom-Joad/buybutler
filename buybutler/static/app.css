@@ -1,0 +1,616 @@
+/* Buybutler on the Tom Joad Media base: a paper ground with an ink bar,
+   square edges, tracked caps for labels. Verdicts use the status colours,
+   always with a word; red stays for the wordmark's stop and the one primary
+   button per view. */
+
+html {
+  background: var(--surface-page);
+}
+
+body {
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  font: var(--text-body-copy);
+  font-size: 17px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---- Bar ---------------------------------------------------------------- */
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-14);
+  padding: var(--space-12) var(--space-20);
+  padding-top: max(var(--space-12), env(safe-area-inset-top));
+  background: var(--surface-ink);
+  color: var(--text-on-ink);
+}
+
+.wordmark {
+  font: var(--text-wordmark);
+  text-transform: uppercase;
+  text-decoration: none;
+  color: inherit;
+  margin: 0;
+}
+
+.wordmark--large {
+  font: var(--text-tile-title);
+  font-size: 56px;
+  color: var(--text-strong);
+}
+
+.bar nav {
+  display: flex;
+  gap: var(--space-18);
+}
+
+.bar nav a {
+  font: var(--text-nav);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--text-on-ink-muted);
+  padding: var(--space-6) 0;
+  border-bottom: var(--stroke-structural) solid transparent;
+}
+
+.bar nav a[aria-current="page"] {
+  color: var(--text-on-ink);
+  border-bottom-color: var(--red);
+}
+
+/* ---- Views -------------------------------------------------------------- */
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-24) var(--space-20) var(--space-48);
+  padding-bottom: max(var(--space-48), env(safe-area-inset-bottom));
+}
+
+.view > * + * {
+  margin-top: var(--space-20);
+}
+
+h1 {
+  font: var(--text-tile-title);
+  font-size: 40px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.section-title {
+  font: var(--text-series-title);
+  font-size: 26px;
+  margin-top: var(--space-34);
+}
+
+.intro {
+  font: var(--text-lead);
+  color: var(--text-body);
+}
+
+.meta,
+.stamps {
+  font: var(--text-meta);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.stamps {
+  font: var(--text-row-meta);
+  letter-spacing: 0.04em;
+}
+
+.eyebrow {
+  font: var(--text-eyebrow);
+  letter-spacing: 0.18em;
+  margin: 0;
+}
+
+.message {
+  min-height: 1.4em;
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--text-body);
+}
+
+.message.is-error {
+  color: var(--status-negative);
+}
+
+.ghost {
+  display: inline-block;
+  font: var(--text-nav);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+/* ---- Forms -------------------------------------------------------------- */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-18);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.field input,
+.field textarea,
+.filters input,
+.filters select {
+  width: 100%;
+  font-size: 17px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.field input[type="file"] {
+  border-style: dashed;
+  background: transparent;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  font: var(--text-caption);
+}
+
+.check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--ink);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+}
+
+.row .btn {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-12);
+}
+
+.inline-form .field {
+  flex: 1;
+}
+
+/* Links styled as buttons centre their label like real buttons. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+
+.btn--danger {
+  color: var(--status-negative);
+  border-color: var(--status-negative);
+  width: 100%;
+  margin-top: var(--space-34);
+}
+
+/* Buy again or not: two big squares. The colour mark always sits next to
+   the word. */
+
+.choice {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-12);
+}
+
+.choice legend {
+  margin-bottom: var(--space-10);
+  padding: 0;
+}
+
+.choice-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice-option span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-10);
+  min-height: 64px;
+  padding: var(--space-12);
+  border: var(--stroke-structural) solid var(--border-structural);
+  background: var(--paper-bright);
+  font: var(--text-button);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+}
+
+.choice-option input:checked + span {
+  color: var(--paper-bright);
+}
+
+.choice-option--buy input:checked + span {
+  background: var(--status-positive);
+  border-color: var(--status-positive);
+}
+
+.choice-option--skip input:checked + span {
+  background: var(--status-negative);
+  border-color: var(--status-negative);
+}
+
+.choice-option input:checked + span .mark {
+  background: var(--paper-bright);
+}
+
+.choice-option input:focus-visible + span {
+  outline: var(--stroke-structural) solid var(--ink);
+  outline-offset: 2px;
+}
+
+.mark {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: var(--status-neutral);
+}
+
+.mark--buy {
+  background: var(--status-positive);
+}
+
+.mark--skip {
+  background: var(--status-negative);
+}
+
+/* Stars as five squares: filled up to the rating, hairline after. */
+
+.stars-input {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.stars-input legend {
+  padding: 0;
+  margin-bottom: var(--space-10);
+}
+
+.stars-row {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.stars-row button {
+  flex: 1;
+  height: 48px;
+  border: var(--stroke-structural) solid var(--border-structural);
+  background: var(--paper-bright);
+  border-radius: var(--radius);
+  font: var(--text-button);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.stars-row button.is-on {
+  background: var(--ink);
+  color: var(--paper-bright);
+}
+
+.stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.stars i {
+  width: 10px;
+  height: 10px;
+  border: var(--stroke-hairline) solid var(--ink);
+}
+
+.stars i.is-on {
+  background: var(--ink);
+}
+
+.stars b {
+  margin-left: var(--space-6);
+  font: var(--text-meta);
+  color: var(--text-muted);
+}
+
+/* ---- Scanner ------------------------------------------------------------ */
+
+.viewfinder {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--surface-ink);
+  overflow: hidden;
+}
+
+.viewfinder video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.aim {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 35%;
+  bottom: 35%;
+  border: var(--stroke-structural) solid var(--paper-bright);
+  opacity: 0.8;
+}
+
+.viewfinder-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  max-width: none;
+  padding: var(--space-10) var(--space-14);
+  background: var(--scrim-caption);
+  color: var(--text-on-ink);
+  font: var(--text-nav);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ---- Product ------------------------------------------------------------ */
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--space-14);
+  padding: var(--space-20);
+  color: var(--paper-bright);
+  background: var(--status-neutral);
+}
+
+.verdict--buy {
+  background: var(--status-positive);
+}
+
+.verdict--skip {
+  background: var(--status-negative);
+}
+
+.verdict .mark {
+  width: 18px;
+  height: 18px;
+  background: var(--paper-bright);
+}
+
+.verdict-word {
+  font: var(--text-tile-title);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.verdict-detail {
+  font: var(--text-caption);
+  margin: var(--space-4) 0 0;
+}
+
+.verdict .stars i {
+  border-color: var(--paper-bright);
+}
+
+.verdict .stars i.is-on {
+  background: var(--paper-bright);
+}
+
+.verdict .stars b {
+  color: var(--paper-bright);
+}
+
+.product-head {
+  display: flex;
+  gap: var(--space-14);
+  align-items: flex-start;
+}
+
+.product-head img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  background: var(--paper-bright);
+  border: var(--stroke-hairline) solid var(--border-hairline);
+  flex: none;
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: var(--stroke-hairline) solid var(--border-hairline);
+}
+
+.history li {
+  padding: var(--space-14) 0;
+  border-bottom: var(--stroke-hairline) solid var(--border-hairline);
+}
+
+.history .head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-10);
+  font: var(--text-button);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.history .reason {
+  margin: var(--space-6) 0 0;
+  white-space: pre-wrap;
+}
+
+.history img {
+  margin-top: var(--space-10);
+  max-height: 240px;
+  width: auto;
+}
+
+.history .edit {
+  font: var(--text-nav);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-left: auto;
+}
+
+/* ---- Lists -------------------------------------------------------------- */
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: var(--stroke-structural) solid var(--border-structural);
+}
+
+.tabs button {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font: var(--text-button);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.tabs button + button {
+  border-left: var(--stroke-hairline) solid var(--border-structural);
+}
+
+.tabs button[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--paper-bright);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-10);
+}
+
+.filters input {
+  grid-column: 1 / -1;
+}
+
+.filters select:last-child {
+  grid-column: 1 / -1;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: var(--stroke-hairline) solid var(--border-hairline);
+}
+
+.list a {
+  display: flex;
+  gap: var(--space-14);
+  align-items: center;
+  padding: var(--space-12) 0;
+  border-bottom: var(--stroke-hairline) solid var(--border-hairline);
+  text-decoration: none;
+}
+
+.list img,
+.list .no-image {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  flex: none;
+  background: var(--paper-bright);
+  border: var(--stroke-hairline) solid var(--border-hairline);
+}
+
+.list .text {
+  flex: 1;
+  min-width: 0;
+}
+
+.list .name {
+  display: block;
+  color: var(--text-strong);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list .sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-10);
+  font: var(--text-meta);
+  color: var(--text-muted);
+}
+
+.list .why {
+  display: block;
+  font: var(--text-caption);
+  color: var(--text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.word {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  font: var(--text-nav);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+}
+
+@media (max-width: 380px) {
+  .bar nav {
+    gap: var(--space-12);
+  }
+
+  .choice {
+    grid-template-columns: 1fr;
+  }
+}

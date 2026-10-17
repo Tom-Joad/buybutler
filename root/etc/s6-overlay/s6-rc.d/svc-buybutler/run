@@ -1,0 +1,12 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+
+cd /app || exit 1
+
+if [[ -z ${LSIO_NON_ROOT_USER} ]]; then
+    # s6-setuidgid keeps root's HOME (/root), which abc can't read.
+    export HOME=/config
+    exec s6-setuidgid abc python3 -m buybutler run
+else
+    exec python3 -m buybutler run
+fi

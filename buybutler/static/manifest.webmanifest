@@ -1,0 +1,14 @@
+{
+  "name": "Buybutler",
+  "short_name": "Buybutler",
+  "description": "Remember which groceries to buy again.",
+  "start_url": "/#/scan",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2ead9",
+  "theme_color": "#16130d",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

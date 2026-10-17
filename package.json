@@ -1,0 +1,8 @@
+{
+  "name": "buybutler-vendor",
+  "private": true,
+  "description": "Browser libraries copied into the image at build time; nothing here runs on Node.",
+  "dependencies": {
+    "zxing-wasm": "3.1.5"
+  }
+}

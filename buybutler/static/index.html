@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16130d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Buybutler</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/vendor/zxing/reader.js" defer></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+
+<header class="bar" id="bar" hidden>
+  <a class="wordmark" href="#/scan">Buybutler<span class="stop">.</span></a>
+  <nav>
+    <a href="#/scan" data-nav="scan">Scan</a>
+    <a href="#/lists" data-nav="lists">Lists</a>
+    <a href="#/account" data-nav="account">Account</a>
+  </nav>
+</header>
+
+<main id="main">
+
+  <!-- Login -->
+  <section class="view" id="view-login" hidden>
+    <p class="wordmark wordmark--large">Buybutler<span class="stop">.</span></p>
+    <p class="intro">Buy it again, or not.</p>
+    <form id="login-form" class="stack" autocomplete="on">
+      <label class="field">
+        <span class="label">User name</span>
+        <input name="username" autocomplete="username" autocapitalize="none" required>
+      </label>
+      <label class="field">
+        <span class="label">Password</span>
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <p class="message" id="login-message" role="alert"></p>
+      <button class="btn btn--primary" type="submit">Log in</button>
+    </form>
+  </section>
+
+  <!-- Scan -->
+  <section class="view" id="view-scan" hidden>
+    <h1>Scan</h1>
+    <div class="viewfinder" id="viewfinder">
+      <video id="video" playsinline muted></video>
+      <div class="aim" aria-hidden="true"></div>
+      <p class="viewfinder-text" id="scan-state">Camera off</p>
+    </div>
+    <div class="row">
+      <button class="btn btn--primary" id="scan-start" type="button">Start camera</button>
+      <button class="btn btn--outline" id="scan-stop" type="button" hidden>Stop camera</button>
+    </div>
+    <form id="manual-form" class="inline-form">
+      <label class="field">
+        <span class="label">Or type the barcode</span>
+        <input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14" placeholder="4000000000000" required>
+      </label>
+      <button class="btn btn--secondary" type="submit">Look up</button>
+    </form>
+    <p class="message" id="scan-message" role="status"></p>
+    <a class="ghost" href="#/new">Add a product without barcode →</a>
+  </section>
+
+  <!-- Product -->
+  <section class="view" id="view-product" hidden>
+    <div class="verdict" id="p-verdict"></div>
+    <div class="product-head">
+      <img id="p-image" alt="" hidden>
+      <div>
+        <h1 id="p-name"></h1>
+        <p class="meta" id="p-meta"></p>
+      </div>
+    </div>
+    <div class="row">
+      <a class="btn btn--primary" id="p-rate" href="#">Rate again</a>
+      <a class="btn btn--outline" id="p-edit" href="#">Edit product</a>
+    </div>
+    <h2 class="section-title">History</h2>
+    <ol class="history" id="p-history"></ol>
+    <p class="stamps" id="p-stamps"></p>
+    <button class="btn btn--outline btn--danger" id="p-delete" type="button">Delete product</button>
+  </section>
+
+  <!-- New or edited product -->
+  <section class="view" id="view-product-form" hidden>
+    <h1 id="pf-title">New product</h1>
+    <p class="message" id="pf-source"></p>
+    <form id="product-form" class="stack">
+      <label class="field">
+        <span class="label">Name</span>
+        <input name="name" maxlength="200" required>
+      </label>
+      <label class="field">
+        <span class="label">Brand</span>
+        <input name="brand" maxlength="200">
+      </label>
+      <label class="field">
+        <span class="label">Category</span>
+        <input name="category" maxlength="100" list="categories">
+      </label>
+      <label class="field">
+        <span class="label">Quantity</span>
+        <input name="quantity" maxlength="50" placeholder="500 g">
+      </label>
+      <label class="field">
+        <span class="label">Barcode</span>
+        <input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14">
+      </label>
+      <label class="check" id="pf-image-choice" hidden>
+        <input type="checkbox" name="use_suggested_image" checked>
+        <span>Use the picture from Open Food Facts</span>
+      </label>
+      <label class="field">
+        <span class="label">Own picture</span>
+        <input name="image" type="file" accept="image/*">
+      </label>
+      <p class="message" id="pf-message" role="alert"></p>
+      <div class="row">
+        <button class="btn btn--primary" type="submit" id="pf-submit">Save and rate</button>
+        <a class="btn btn--outline" href="#/scan" id="pf-cancel">Cancel</a>
+      </div>
+    </form>
+  </section>
+
+  <!-- Rating form -->
+  <section class="view" id="view-rate" hidden>
+    <p class="eyebrow" id="r-product"></p>
+    <h1 id="r-title">Rate</h1>
+    <form id="rate-form" class="stack">
+      <fieldset class="choice">
+        <legend class="label">Buy it again?</legend>
+        <label class="choice-option choice-option--buy">
+          <input type="radio" name="buy_again" value="1" required>
+          <span><i class="mark mark--buy"></i>Buy again</span>
+        </label>
+        <label class="choice-option choice-option--skip">
+          <input type="radio" name="buy_again" value="0" required>
+          <span><i class="mark mark--skip"></i>Don't buy again</span>
+        </label>
+      </fieldset>
+      <fieldset class="stars-input">
+        <legend class="label">Stars <span id="r-stars-value">none</span></legend>
+        <div class="stars-row" id="r-stars"></div>
+      </fieldset>
+      <label class="field">
+        <span class="label">Reason</span>
+        <textarea name="reason" rows="4" maxlength="2000" placeholder="What was good, what was not"></textarea>
+      </label>
+      <label class="field">
+        <span class="label">Store</span>
+        <input name="store" maxlength="100" list="stores">
+      </label>
+      <label class="field">
+        <span class="label">Date</span>
+        <input name="rated_on" type="date" required>
+      </label>
+      <label class="field">
+        <span class="label">Photo</span>
+        <input name="photo" type="file" accept="image/*">
+      </label>
+      <p class="message" id="r-message" role="alert"></p>
+      <div class="row">
+        <button class="btn btn--primary" type="submit">Save rating</button>
+        <a class="btn btn--outline" href="#" id="r-cancel">Cancel</a>
+      </div>
+      <button class="btn btn--outline btn--danger" type="button" id="r-delete" hidden>Delete rating</button>
+    </form>
+  </section>
+
+  <!-- Lists -->
+  <section class="view" id="view-lists" hidden>
+    <h1>Lists</h1>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-verdict="buy">Buy again</button>
+      <button type="button" role="tab" data-verdict="skip">Don't buy</button>
+      <button type="button" role="tab" data-verdict="all">All</button>
+    </div>
+    <form id="filter-form" class="filters">
+      <input name="q" type="search" placeholder="Search name, brand, reason" aria-label="Search">
+      <select name="store" aria-label="Store"><option value="">Every store</option></select>
+      <select name="category" aria-label="Category"><option value="">Every category</option></select>
+      <select name="sort" aria-label="Sort">
+        <option value="recent">Newest first</option>
+        <option value="name">By name</option>
+        <option value="stars">By stars</option>
+      </select>
+    </form>
+    <p class="meta" id="l-count"></p>
+    <ul class="list" id="l-items"></ul>
+  </section>
+
+  <!-- Account -->
+  <section class="view" id="view-account" hidden>
+    <h1>Account</h1>
+    <p class="meta" id="a-user"></p>
+    <form id="password-form" class="stack">
+      <h2 class="section-title">Change password</h2>
+      <label class="field">
+        <span class="label">Current password</span>
+        <input name="current" type="password" autocomplete="current-password" required>
+      </label>
+      <label class="field">
+        <span class="label">New password, at least 10 characters</span>
+        <input name="new" type="password" autocomplete="new-password" minlength="10" required>
+      </label>
+      <p class="message" id="a-message" role="alert"></p>
+      <button class="btn btn--secondary" type="submit">Change password</button>
+    </form>
+    <button class="btn btn--outline" id="logout" type="button">Log out</button>
+  </section>
+
+</main>
+
+<datalist id="stores"></datalist>
+<datalist id="categories"></datalist>
+
+</body>
+</html>

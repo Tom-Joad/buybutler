@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+  # The barcode decoder for the browser (package.json); copied into the
+  # image at build time.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+  # Both stages of the Dockerfile: node (vendor) and the linuxserver.io base.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  # Actions are pinned to commit SHAs; Dependabot updates the SHA and the
+  # version comment together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
