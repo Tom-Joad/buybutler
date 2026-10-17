@@ -29,6 +29,14 @@ esac
 [[ -z ${BUYBUTLER_CURRENCY} || ${BUYBUTLER_CURRENCY} =~ ^[A-Za-z]{3}$ ]] \
     || fail "BUYBUTLER_CURRENCY must be a three-letter currency code, got '${BUYBUTLER_CURRENCY}'"
 
+# Passkeys need a host name over HTTPS; only localhost may use http.
+if [[ -n ${BUYBUTLER_PUBLIC_URL} ]]; then
+    [[ ${BUYBUTLER_PUBLIC_URL} =~ ^(https://[A-Za-z0-9.-]+|http://localhost)(:[0-9]{1,5})?/?$ ]] \
+        || fail "BUYBUTLER_PUBLIC_URL must be the address in the browser, such as https://buybutler.example.com, got '${BUYBUTLER_PUBLIC_URL}'"
+    [[ ! ${BUYBUTLER_PUBLIC_URL} =~ ^https://[0-9.]+(:[0-9]+)?/?$ ]] \
+        || fail "BUYBUTLER_PUBLIC_URL needs a host name, passkeys don't work with an IP address: '${BUYBUTLER_PUBLIC_URL}'"
+fi
+
 case "${BUYBUTLER_LOG_LEVEL^^}" in
     "" | DEBUG | INFO | WARNING | ERROR) ;;
     *) fail "BUYBUTLER_LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR, got '${BUYBUTLER_LOG_LEVEL}'" ;;

@@ -4,6 +4,29 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [Unreleased]
+
+### Added
+- **Two-factor login**, optional for each user, under **Account**: an
+  authenticator app (TOTP, set up with a QR code) and passkeys. With one of
+  them, the password alone no longer logs in.
+- **Log in with a passkey**, without user name or password. Passkeys also
+  serve as the second step after a password. Several per user (phone,
+  laptop), each can be removed.
+- Ten one-time recovery codes when two-factor login is turned on, and
+  **New recovery codes**.
+- Admins remove a user's second factors under **Account → Users**, or with
+  `buybutler user reset-2fa <NAME>`. `user list` shows who has two-factor
+  login.
+- `BUYBUTLER_PUBLIC_URL`: the address Buybutler is opened at; passkeys need
+  it.
+
+### Changed
+- Turning on two-factor login ends the user's other sessions. Wrong codes
+  count towards the login lockout.
+- The database is migrated on the first start (schema 5); nothing to do by
+  hand.
+
 ## [0.7.0] - 2026-10-17
 
 ### Added

@@ -1,5 +1,5 @@
-# The barcode decoder for the browser comes from npm. This stage only copies
-# its files; Node itself doesn't reach the final image.
+# The barcode decoder and the QR encoder for the browser come from npm. This
+# stage only copies their files; Node itself doesn't reach the final image.
 # Pinned by digest (a multi-arch index); Dependabot proposes new digests.
 FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS vendor
 WORKDIR /build
@@ -42,6 +42,9 @@ RUN apk upgrade --no-cache \
 COPY buybutler/ /app/buybutler/
 COPY --from=vendor /build/node_modules/zxing-wasm/dist/iife/reader/index.js /app/buybutler/static/vendor/zxing/reader.js
 COPY --from=vendor /build/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm /app/buybutler/static/vendor/zxing/zxing_reader.wasm
+# The writer draws the QR code for setting up an authenticator app.
+COPY --from=vendor /build/node_modules/zxing-wasm/dist/iife/writer/index.js /app/buybutler/static/vendor/zxing/writer.js
+COPY --from=vendor /build/node_modules/zxing-wasm/dist/writer/zxing_writer.wasm /app/buybutler/static/vendor/zxing/zxing_writer.wasm
 COPY --from=vendor /build/node_modules/zxing-wasm/LICENSE /app/buybutler/static/vendor/zxing/LICENSE
 # s6 services (init-buybutler-config, svc-buybutler), the start banner and
 # the `buybutler` command for docker exec.

@@ -30,14 +30,23 @@ edit a released step.
 served by the app. The CSP (`script-src 'self'`) enforces it.
 
 **No personal data in logs.** IDs, counts and timings only; never product
-names, reasons, user names, barcodes or passwords.
+names, reasons, user names, barcodes, passwords, codes or tickets.
+
+**Second factors are checked on the server only.** With an authenticator
+app or a passkey, `POST /api/session` returns a ticket instead of a session;
+the session comes from `/api/session/second-factor` or
+`/api/session/passkey`. A TOTP step and a recovery code work once, a
+challenge is answered once. Changes to second factors need the current
+password (`confirm_password`). Tests in `tests/test_twofactor.py` use a
+software authenticator, so py_webauthn checks real signatures.
 
 ## Conventions
 
 * Everything in the repository is in English.
-* Few dependencies: `fastapi`, `uvicorn`, `httpx`; SQLite and scrypt from
-  the standard library. The browser shrinks photos, so there is no image
-  library on the server.
+* Few dependencies: `fastapi`, `uvicorn`, `httpx`, `webauthn` (passkeys);
+  SQLite, scrypt and TOTP from the standard library. The browser shrinks
+  photos, so there is no image library on the server. The QR code for the
+  authenticator app comes from the zxing-wasm writer in the browser.
 * The interface follows the Tom Joad Media design (`static/css/tokens.css`,
   `base.css`). Verdicts use the status colours with a word; red only for
   the wordmark's stop and the one primary button per view.

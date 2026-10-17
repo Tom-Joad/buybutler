@@ -773,3 +773,31 @@ input[type="date"] {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Two-factor login ---------------------------------------------------- */
+
+/* Scanners want dark modules on a light, quiet margin. */
+.qr {
+  width: 220px;
+  height: 220px;
+  padding: var(--space-10);
+  background: #ffffff;
+  border: 1px solid var(--border-hairline);
+  image-rendering: pixelated;
+}
+
+.secret,
+.codes {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-6) var(--space-20);
+  padding-left: 2.4em;
+}

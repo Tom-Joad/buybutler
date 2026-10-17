@@ -14,6 +14,10 @@ lowest and highest regular price.
 
 Every entry keeps the time it was made and last changed.
 
+Optional two-factor login per user: a code from an authenticator app, or a
+passkey (fingerprint or face unlock on the phone, no password typed in the
+shop), with one-time recovery codes for a lost phone.
+
 Made for the shop's poor reception: requests that get no answer are
 repeated, and new ratings, products and prices that still can't be sent are
 saved on the phone and sent when the connection is back ("2 waiting" in the
@@ -95,6 +99,9 @@ A template and its own guide: [`unraid/README-UNRAID.md`](unraid/README-UNRAID.m
    phone, "Add to Home Screen" installs it like an app.
 4. More users: **Account → Users** (admins only). Share a list with them
    under **Manage → <list> → Members**.
+5. For passkeys, set `BUYBUTLER_PUBLIC_URL` to the address of the reverse
+   proxy, then turn on two-factor login under **Account**, see
+   [Two-factor login](#two-factor-login).
 
 **The camera needs HTTPS.** Browsers only allow camera access on HTTPS pages
 (and on `localhost`). Over plain `http://<server>:8080` everything works
@@ -114,6 +121,7 @@ except scanning; type the barcode instead.
 | `-e BUYBUTLER_OFF_LOOKUP` | `true` | `false` never sends barcodes to Open Food Facts; products are entered by hand |
 | `-e BUYBUTLER_SESSION_DAYS` | `90` | Days a login stays valid without being used (1 to 3650) |
 | `-e BUYBUTLER_MAX_UPLOAD_MB` | `10` | Largest accepted picture (1 to 100); the browser shrinks photos before sending |
+| `-e BUYBUTLER_PUBLIC_URL` | -- | The address Buybutler is opened at, such as `https://buybutler.example.com`. Needed for passkeys, which are bound to this host name; HTTPS and a host name (no IP address). Without it, passkeys are off and the authenticator app still works |
 | `-e BUYBUTLER_TRUSTED_PROXIES` | `*` | Addresses whose `X-Forwarded-*` headers are trusted. Set it to the reverse proxy's address (comma-separated list); with `*`, the client address in the log and the per-address login limit can be forged, see [Security](#security) |
 | `-e BUYBUTLER_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 | `-e BUYBUTLER_PORT` | `8080` | Port inside the container |
@@ -139,7 +147,8 @@ container's user, so files keep the `PUID`/`PGID` owner.
 |---|---|
 | `user add <NAME> [--admin]` | Add a user. The first one becomes admin and gets the list "Home"; later ones start without a list |
 | `user passwd <NAME>` | Set a new password; that user's sessions end |
-| `user list` | List users with role and creation time |
+| `user list` | List users with role, `2fa` or `password`, and creation time |
+| `user reset-2fa <NAME>` | Remove a user's authenticator app, passkeys and recovery codes, for a lost phone; the password alone logs in again |
 | `user delete <NAME>` | Delete a user. Lists only they use are deleted with them; a shared list they alone own needs another owner first. Their ratings elsewhere stay, without a name |
 | `backup` | Write a consistent copy of the database to `/config/backups/` |
 
@@ -171,6 +180,30 @@ command); a new user creates their own lists or is added to one.
 becomes the list "Home"; the admin becomes its owner, every other user an
 editor.
 
+## Two-factor login
+
+Optional for each user, under **Account → Two-factor login**. Once a user
+has an authenticator app or a passkey, the password alone no longer logs
+them in. Changes here ask for the current password.
+
+- **Authenticator app** (any app for 6-digit TOTP codes): scan the QR code,
+  enter the first code to confirm. After the password, the login asks for
+  the current code; each code works once.
+- **Passkeys:** **Add a passkey** on each device (phone, laptop). On the
+  login page, **Log in with a passkey** logs in without a user name or
+  password; after a password, a passkey also serves as the second step.
+  Passkeys need `BUYBUTLER_PUBLIC_URL` and work only when Buybutler is
+  opened at that address.
+- **Recovery codes:** ten codes are shown once when two-factor login is
+  turned on. Each logs in once instead of the second step. **New recovery
+  codes** replaces them.
+- **Lost phone and codes:** an admin removes the user's second factors under
+  **Account → Users → Reset two-factor**, or with
+  `docker exec -it buybutler buybutler user reset-2fa <NAME>`.
+
+Turning two-factor login on ends the user's other sessions. Wrong codes
+count towards the same lockout as wrong passwords.
+
 ## Backups
 
 Back up the whole `/config` folder. The database runs in WAL mode: a plain
@@ -189,15 +222,24 @@ from `/config/backups/`. Delete old backups yourself; Buybutler doesn't.
 
 ## Security
 
-- Log in with user name and password. Passwords are stored as scrypt hashes,
-  login sessions as SHA-256 of a random token; the cookie is `HttpOnly`,
-  `SameSite=Lax` and `Secure` behind HTTPS.
+- Log in with user name and password, optionally with a second factor, or
+  with a passkey. Passwords are stored as scrypt hashes, login sessions and
+  recovery codes as SHA-256; the cookie is `HttpOnly`, `SameSite=Lax` and
+  `Secure` behind HTTPS.
+- The authenticator app's secret is stored as it is in the database: an app
+  has to compute the same codes, so it can't be hashed, and a key inside
+  the same container would add little. Protect `/config` and its backups
+  like the passwords in it.
+- Passkeys require user verification (fingerprint, face or PIN) and are
+  checked with py_webauthn against `BUYBUTLER_PUBLIC_URL`; a passkey made
+  for another site is refused.
 - Five failed logins for one account lock that account for 15 minutes, from
   any address; 20 failures from one client address lock that address. The
   account limit holds even when the client address is forged. Someone who
   knows a user name can therefore lock that account for 15 minutes on
   purpose; a restart of the container lifts every lock. Changing the
-  password in the interface counts towards the same limit.
+  password in the interface, and wrong second-factor codes, count towards
+  the same limit.
 - Every change needs a request header that other sites can't set (no
   cross-site requests); a strict Content Security Policy blocks scripts from
   elsewhere.
@@ -220,7 +262,9 @@ check calls `http://127.0.0.1:8080/health`.
 |---|---|
 | "Camera needs HTTPS" | The page was opened over plain HTTP; use the reverse proxy's HTTPS address |
 | "No camera access" | The browser or phone denied the camera; allow it in the site settings |
-| Logged out after a password change | Intended: a new password ends every other session |
+| Logged out after a password change | Intended: a new password ends every other session; so does turning on two-factor login |
+| No "Log in with a passkey" button | `BUYBUTLER_PUBLIC_URL` isn't set, or the page was opened at another address than that one |
+| "Wrong code" from the authenticator app | The phone's clock is off, or the code was used already; wait for the next one |
 | "Too many failed logins" | Wait 15 minutes, or restart the container (also when someone else guessed wrong for your account) |
 | Wrong client address in the log | `BUYBUTLER_TRUSTED_PROXIES` doesn't include the reverse proxy |
 | "No connection to Buybutler" | No answer after several tries (network, or the reverse proxy can't reach the container). New entries are kept on the phone and sent later |

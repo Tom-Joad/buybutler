@@ -147,6 +147,57 @@ MIGRATIONS: list[str] = [
     DROP TABLE users;
     ALTER TABLE users_new RENAME TO users;
     """,
+    # 5: second factors. An authenticator app's secret (TOTP), passkeys,
+    # one-time recovery codes, and the short-lived challenges of a login or
+    # passkey registration in progress. webauthn_id is the random handle a
+    # passkey stores for its user.
+    """
+    ALTER TABLE users ADD COLUMN webauthn_id TEXT;
+    CREATE UNIQUE INDEX users_webauthn_id ON users(webauthn_id) WHERE webauthn_id IS NOT NULL;
+
+    CREATE TABLE totp_secrets (
+        user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        secret        TEXT NOT NULL,
+        confirmed_at  TEXT,
+        last_step     INTEGER NOT NULL DEFAULT 0,
+        last_used_at  TEXT,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    );
+
+    CREATE TABLE passkeys (
+        id             INTEGER PRIMARY KEY,
+        user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        credential_id  TEXT NOT NULL UNIQUE,
+        public_key     BLOB NOT NULL,
+        sign_count     INTEGER NOT NULL DEFAULT 0,
+        transports     TEXT NOT NULL DEFAULT '',
+        name           TEXT NOT NULL,
+        last_used_at   TEXT,
+        created_at     TEXT NOT NULL,
+        updated_at     TEXT NOT NULL
+    );
+    CREATE INDEX passkeys_user ON passkeys(user_id);
+
+    CREATE TABLE recovery_codes (
+        id          INTEGER PRIMARY KEY,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash   TEXT NOT NULL,
+        used_at     TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE INDEX recovery_codes_user ON recovery_codes(user_id);
+
+    CREATE TABLE auth_challenges (
+        token_hash  TEXT PRIMARY KEY,
+        user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        purpose     TEXT NOT NULL CHECK (purpose IN ('second_factor', 'passkey_login', 'passkey_register')),
+        challenge   TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL,
+        expires_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 
