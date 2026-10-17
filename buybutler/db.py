@@ -99,6 +99,16 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX prices_product ON prices(product_id, bought_on, created_at);
     """,
+    # 3: an ID the phone gives each new record, so a request repeated after
+    # a lost answer doesn't create the record twice.
+    """
+    ALTER TABLE products ADD COLUMN client_id TEXT;
+    ALTER TABLE ratings ADD COLUMN client_id TEXT;
+    ALTER TABLE prices ADD COLUMN client_id TEXT;
+    CREATE UNIQUE INDEX products_client_id ON products(client_id) WHERE client_id IS NOT NULL;
+    CREATE UNIQUE INDEX ratings_client_id ON ratings(client_id) WHERE client_id IS NOT NULL;
+    CREATE UNIQUE INDEX prices_client_id ON prices(client_id) WHERE client_id IS NOT NULL;
+    """,
 ]
 
 

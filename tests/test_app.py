@@ -582,3 +582,95 @@ def test_migration_from_the_first_schema(settings):
     conn = sqlite3.connect(settings.database)
     assert conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0] == 0
     conn.close()
+
+
+# ---- repeated requests (client_id) -----------------------------------------
+
+CID = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+
+def test_repeated_product_create_returns_the_first(logged_in):
+    body = {"name": "Oat milk", "barcode": "4000000000002", "client_id": CID}
+    first = logged_in.post("/api/products", json=body, headers=H)
+    again = logged_in.post("/api/products", json=body, headers=H)
+    assert first.status_code == 201 and again.status_code == 200
+    assert first.json()["id"] == again.json()["id"]
+    assert len(logged_in.get("/api/products").json()["products"]) == 1
+
+
+def test_repeated_rating_with_price_is_stored_once(logged_in):
+    p = make_product(logged_in)
+    body = {"buy_again": False, "stars": 1, "client_id": CID, "price": {"amount_cents": 199}}
+    first = logged_in.post(f"/api/products/{p['id']}/ratings", json=body, headers=H)
+    again = logged_in.post(f"/api/products/{p['id']}/ratings", json=body, headers=H)
+    assert (first.status_code, again.status_code) == (201, 200)
+    assert first.json()["id"] == again.json()["id"]
+    detail = logged_in.get(f"/api/products/{p['id']}").json()
+    assert detail["rating_count"] == 1 and len(detail["prices"]) == 1
+
+
+def test_repeated_price_is_stored_once(logged_in):
+    p = make_product(logged_in)
+    body = {"amount_cents": 249, "client_id": CID}
+    a = logged_in.post(f"/api/products/{p['id']}/prices", json=body, headers=H)
+    b = logged_in.post(f"/api/products/{p['id']}/prices", json=body, headers=H)
+    assert (a.status_code, b.status_code) == (201, 200) and a.json()["id"] == b.json()["id"]
+
+
+def test_client_id_for_another_product_is_refused(logged_in):
+    p = make_product(logged_in, name="A")
+    q = make_product(logged_in, name="B")
+    logged_in.post(f"/api/products/{p['id']}/ratings", json={"buy_again": True, "client_id": CID}, headers=H)
+    r = logged_in.post(f"/api/products/{q['id']}/ratings", json={"buy_again": True, "client_id": CID}, headers=H)
+    assert r.status_code == 409
+
+
+def test_client_id_format(logged_in):
+    r = logged_in.post("/api/products", json={"name": "x", "client_id": "short"}, headers=H)
+    assert r.status_code == 422
+    r = logged_in.post("/api/products", json={"name": "x", "client_id": "a" * 65}, headers=H)
+    assert r.status_code == 422
+
+
+def test_concurrent_copy_returns_the_first(logged_in, settings, monkeypatch):
+    # The first copy commits between the second copy's check and its insert.
+    from buybutler import app as app_module
+
+    p = make_product(logged_in)
+    real = app_module._replayed
+    calls = {"n": 0}
+
+    def late(conn, user, table, client_id):
+        calls["n"] += 1
+        if table == "ratings" and calls["n"] == 1:
+            with db.session(settings.database) as other:
+                stamp = db.now()
+                other.execute(
+                    "INSERT INTO ratings (product_id, user_id, buy_again, rated_on, created_at, updated_at,"
+                    " client_id) VALUES (?, 1, 1, '2026-10-17', ?, ?, ?)",
+                    (p["id"], stamp, stamp, CID),
+                )
+            return None
+        return real(conn, user, table, client_id)
+
+    monkeypatch.setattr(app_module, "_replayed", late)
+    r = logged_in.post(f"/api/products/{p['id']}/ratings", json={"buy_again": True, "client_id": CID}, headers=H)
+    assert r.status_code == 200
+    assert logged_in.get(f"/api/products/{p['id']}").json()["rating_count"] == 1
+
+
+def test_households_cant_reuse_a_client_id(logged_in, settings):
+    logged_in.post("/api/products", json={"name": "x", "client_id": CID}, headers=H)
+    with db.session(settings.database) as conn:
+        stamp = db.now()
+        hid = conn.execute(
+            "INSERT INTO households (name, created_at, updated_at) VALUES ('Other', ?, ?)", (stamp, stamp)
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO users (household_id, username, password_hash, role, created_at, updated_at)"
+            " VALUES (?, 'other', ?, 'admin', ?, ?)",
+            (hid, auth.hash_password(PASSWORD), stamp, stamp),
+        )
+    other = TestClient(logged_in.app)
+    other.post("/api/session", json={"username": "other", "password": PASSWORD}, headers=H)
+    assert other.post("/api/products", json={"name": "y", "client_id": CID}, headers=H).status_code == 409
