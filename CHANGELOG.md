@@ -4,6 +4,26 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [Unreleased]
+
+### Added
+- **Shopping list** (**Shop** in the top bar), one per list and shared by
+  its members: add products (suggestions put "Buy again" first; "Don't buy
+  again" asks and shows the reason) or any text, with an optional
+  quantity; **Add to shopping** on a product page.
+- Tick items off in the shop with one tap; ticked items move to "In the
+  basket" with a **Price** link; **Clear ticked**.
+- **Order per store:** drag the items into the order you walk through a
+  store; the place of every product and text is remembered per store for
+  the next time. Items can be tied to one store.
+- While open, the shopping list is updated every 5 seconds. Changes work
+  offline through the outbox, and the last shopping list opens offline.
+
+### Changed
+- The database is migrated on the first start (schema 6); nothing to do by
+  hand.
+- The top bar is a little tighter on narrow phones to fit four entries.
+
 ## [0.9.0] - 2026-10-18
 
 ### Added

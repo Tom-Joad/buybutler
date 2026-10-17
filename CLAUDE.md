@@ -46,6 +46,13 @@ and the service worker (`buybutler/sw.js`, served at `/sw.js`) keeps only
 the app shell and pictures, never API answers. Logging out and a `401`
 clear both (`forgetOffline`). Writes offline go through the outbox only.
 
+**Shopping items are named by their client_id.** The phone gives every
+item an ID, so a tick made offline can name an item the server hasn't seen
+yet; shopping changes are sent in order (`shopSend`). Ticking a ticked
+item keeps the first tick. `store_order` remembers positions per item key
+(`p:<product>`, `t:<text>`) and store; `shopping.set_order` keeps the
+places of keys not shown.
+
 ## Conventions
 
 * Everything in the repository is in English.

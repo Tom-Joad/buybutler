@@ -137,6 +137,13 @@ grep -q '"unit_price":{"amount_cents":498,"per":"kg"}' <<<"$R" || fail "no unit 
 [[ -z $(find "$WORK/config" -user 0 -print -quit) ]] || fail "files in /config owned by root"
 if grep -rq "$PASSWORD" "$WORK/config" 2>/dev/null; then fail "password stored in clear text"; fi
 
+echo "== shopping list"
+R=$(http POST /api/shopping '{"product_id":1,"quantity":"2x"}')
+[[ $(status_of "$R") == 201 ]] || fail "shopping item not added: $R"
+ITEM=$(sed -n 2p <<<"$R" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+R=$(http PATCH "/api/shopping/$ITEM" '{"checked":true}')
+grep -q '"checked":true' <<<"$R" || fail "shopping item not ticked: $R"
+
 echo "== two-factor login"
 R=$(http POST /api/account/totp "{\"password\":\"$PASSWORD\"}")
 [[ $(status_of "$R") == 200 ]] || fail "authenticator setup failed: $R"

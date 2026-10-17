@@ -824,3 +824,200 @@ input[type="date"] {
 .notice--update .btn {
   padding: 8px 16px;
 }
+
+/* ---- Shopping list --------------------------------------------------------- */
+
+.shop-add-row {
+  display: grid;
+  grid-template-columns: 1fr 4.5em auto;
+  align-items: end;
+  gap: var(--space-10);
+}
+
+.shop-add-row .btn {
+  padding-left: var(--space-14);
+  padding-right: var(--space-14);
+}
+
+.shop-suggestions,
+.shop-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shop-suggestions {
+  border: var(--stroke-hairline) solid var(--border-structural);
+  background: var(--paper-bright);
+}
+
+.shop-suggestions button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-6) var(--space-10);
+  width: 100%;
+  padding: var(--space-12) var(--space-14);
+  border: 0;
+  border-bottom: var(--stroke-hairline) solid var(--border-hairline);
+  background: none;
+  color: var(--text-strong);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shop-suggestions .name {
+  font-weight: 700;
+}
+
+.shop-item {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-6);
+  border-bottom: var(--stroke-hairline) solid var(--border-hairline);
+  background: var(--surface-page);
+}
+
+.shop-item.is-dragging {
+  position: relative;
+  z-index: 2;
+  box-shadow: var(--shadow-control);
+}
+
+/* The drag handle: a large target, and no page scrolling while dragging. */
+.shop-item .handle {
+  flex: none;
+  width: 40px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.shop-item .tick {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-14);
+  min-width: 0;
+  padding: var(--space-14) 0;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.shop-item .box {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: var(--stroke-structural) solid var(--border-structural);
+}
+
+.shop-item.is-checked .box {
+  background: var(--status-positive);
+  border-color: var(--status-positive);
+  box-shadow: inset 0 0 0 4px var(--surface-page);
+}
+
+.shop-item .text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.shop-item .name {
+  font-weight: 700;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.shop-item.is-checked .name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.shop-item .sub {
+  font: var(--text-row-meta);
+  color: var(--text-muted);
+}
+
+.shop-item .side {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding-right: var(--space-4);
+}
+
+.shop-edit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-10);
+  padding: var(--space-10) 0 var(--space-18);
+}
+
+.shop-edit .wide {
+  grid-column: 1 / -1;
+}
+
+.shop-edit .actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-10);
+}
+
+.shop-others summary {
+  font: var(--text-nav);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: var(--space-10) 0;
+}
+
+.shop-item .side .edit {
+  font: var(--text-caption);
+}
+
+/* Four entries in the bar: tighter on a phone. */
+@media (max-width: 480px) {
+  .bar {
+    gap: var(--space-10);
+    padding-left: var(--space-14);
+    padding-right: var(--space-14);
+  }
+
+  .bar .wordmark {
+    font-size: 21px;
+  }
+
+  .bar nav {
+    gap: var(--space-10);
+  }
+
+  .bar nav a {
+    letter-spacing: 0.06em;
+  }
+}
+
+@media (max-width: 380px) {
+  .bar .wordmark {
+    font-size: 18px;
+  }
+
+  .bar nav {
+    gap: var(--space-6);
+  }
+
+  .bar nav a {
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
+}
