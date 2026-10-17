@@ -4,7 +4,7 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
-## [0.1.0] - Unreleased
+## [0.5.0] - 2026-10-17
 
 ### Added
 - Scan a barcode with the phone camera, or type it; a known product shows its
@@ -32,4 +32,4 @@ need action when upgrading; the entry says so.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
-[0.1.0]: https://github.com/Tom-Joad/buybutler/releases/tag/v0.1.0
+[0.5.0]: https://github.com/Tom-Joad/buybutler/releases/tag/v0.5.0
