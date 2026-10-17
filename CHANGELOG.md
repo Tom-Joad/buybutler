@@ -4,6 +4,26 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [Unreleased]
+
+### Added
+- Works on a poor connection: requests without an answer (network errors,
+  timeouts after 20 s, `502`/`503`/`504` from the reverse proxy) are
+  repeated after 1, 3 and 8 seconds.
+- New ratings, products (with their rating) and prices that still can't be
+  sent are saved on the phone and sent when the connection is back. The top
+  bar shows how many are waiting; **Account** lists them with **Send now**
+  and **Discard**. A product saved offline whose barcode exists already gets
+  the rating on the existing product.
+- Scanning without a connection offers to add the product by hand.
+
+### Fixed
+- A repeated request no longer creates a product, rating or price twice:
+  the phone gives every new entry an ID, and the server returns the
+  existing entry for a repeat.
+- "Load failed" and similar browser texts are replaced by a clear message.
+- The date field no longer runs over the right edge on iPhones.
+
 ## [0.5.0] - 2026-10-17
 
 ### Added

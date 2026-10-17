@@ -42,6 +42,10 @@ SECURITY_HEADERS = {
 # Request and response shapes
 
 
+# A random ID from the phone (a UUID); see db migration 3.
+ClientId = Annotated[str | None, Field(default=None, pattern=r"^[A-Za-z0-9-]{16,64}$")]
+
+
 def _text(value: str | None, limit: int) -> str:
     value = (value or "").strip()
     if len(value) > limit:
@@ -60,6 +64,7 @@ class PasswordChange(BaseModel):
 
 
 class ProductIn(BaseModel):
+    client_id: ClientId = None
     barcode: str | None = None
     name: str
     brand: str = ""
@@ -141,6 +146,7 @@ def _unit(v: str) -> str:
 
 
 class PriceIn(BaseModel):
+    client_id: ClientId = None
     # Cents, up to 100 000.00 in the currency.
     amount_cents: int = Field(ge=0, le=10_000_000)
     quantity: float | None = Field(default=None, gt=0, le=1_000_000)
@@ -185,6 +191,7 @@ class PricePatch(BaseModel):
 
 
 class RatingIn(BaseModel):
+    client_id: ClientId = None
     buy_again: bool
     stars: int | None = Field(default=None, ge=1, le=5)
     reason: str = ""
@@ -306,6 +313,39 @@ def _load_price(conn: sqlite3.Connection, user: auth.User, price_id: int) -> sql
     if row is None:
         raise HTTPException(404, "price not found")
     return row
+
+
+def _after_conflict(conn: sqlite3.Connection, user: auth.User, table: str, client_id: str | None) -> int | None:
+    """A repeated request that ran at the same time as the first copy: its
+    insert hit the unique client_id. The first copy has committed by now
+    (SQLite serialises writers); start over and return its record."""
+    if not client_id:
+        return None
+    conn.rollback()
+    return _replayed(conn, user, table, client_id)
+
+
+def _replayed(conn: sqlite3.Connection, user: auth.User, table: str, client_id: str | None) -> int | None:
+    """The ID of a record an earlier copy of this request created, if any.
+
+    The phone repeats a request when the answer got lost on a bad network;
+    the record then exists already and is returned instead of a second one.
+    """
+    if not client_id:
+        return None
+    household = {
+        "products": "SELECT id, household_id FROM products WHERE client_id = ?",
+        "ratings": "SELECT r.id, p.household_id FROM ratings r JOIN products p ON p.id = r.product_id"
+                   " WHERE r.client_id = ?",
+        "prices": "SELECT pr.id, p.household_id FROM prices pr JOIN products p ON p.id = pr.product_id"
+                  " WHERE pr.client_id = ?",
+    }[table]
+    row = conn.execute(household, (client_id,)).fetchone()
+    if row is None:
+        return None
+    if row["household_id"] != user.household_id:
+        raise HTTPException(409, "this client id is in use")
+    return row["id"]
 
 
 def _load_rating(conn: sqlite3.Connection, user: auth.User, rating_id: int) -> sqlite3.Row:
@@ -595,7 +635,12 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         images.delete(settings.images, "products", name)
 
     @app.post("/api/products", status_code=201)
-    def create_product(body: ProductIn, user: CurrentUser, conn: Conn, tasks: BackgroundTasks) -> dict:
+    def create_product(body: ProductIn, user: CurrentUser, conn: Conn, tasks: BackgroundTasks,
+                       response: Response) -> dict:
+        existing = _replayed(conn, user, "products", body.client_id)
+        if existing is not None:
+            response.status_code = 200
+            return _product_json(conn, _load_product(conn, user, existing))
         if body.barcode and conn.execute(
             "SELECT 1 FROM products WHERE household_id = ? AND barcode = ?", (user.household_id, body.barcode)
         ).fetchone():
@@ -609,12 +654,19 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
                 source = "openfoodfacts"
                 image_url = suggestion.image_url or None
         stamp = db.now()
-        product_id = conn.execute(
-            "INSERT INTO products (household_id, barcode, name, brand, category, quantity, image, source,"
-            " created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user.household_id, body.barcode, body.name, body.brand, body.category, body.quantity, None,
-             source, user.id, stamp, stamp),
-        ).lastrowid
+        try:
+            product_id = conn.execute(
+                "INSERT INTO products (household_id, barcode, name, brand, category, quantity, image, source,"
+                " created_by, created_at, updated_at, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user.household_id, body.barcode, body.name, body.brand, body.category, body.quantity, None,
+                 source, user.id, stamp, stamp, body.client_id),
+            ).lastrowid
+        except sqlite3.IntegrityError:
+            existing = _after_conflict(conn, user, "products", body.client_id)
+            if existing is None:
+                raise HTTPException(409, "a product with this barcode exists already") from None
+            response.status_code = 200
+            return _product_json(conn, _load_product(conn, user, existing))
         log.info("product_created", extra={"product_id": product_id, "source": source})
         if image_url:
             # Runs after the response, and after this request's commit.
@@ -712,15 +764,30 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     # ---- ratings -----------------------------------------------------------
 
     @app.post("/api/products/{product_id}/ratings", status_code=201)
-    def create_rating(product_id: int, body: RatingIn, user: CurrentUser, conn: Conn) -> dict:
+    def create_rating(product_id: int, body: RatingIn, user: CurrentUser, conn: Conn, response: Response) -> dict:
         _load_product(conn, user, product_id)
+        existing = _replayed(conn, user, "ratings", body.client_id)
+        if existing is not None:
+            row = _load_rating(conn, user, existing)
+            if row["product_id"] != product_id:
+                raise HTTPException(409, "this client id is in use")
+            response.status_code = 200
+            return _rating(row)
         stamp = db.now()
         rated_on = (body.rated_on or date.today()).isoformat()
-        rating_id = conn.execute(
-            "INSERT INTO ratings (product_id, user_id, buy_again, stars, reason, store, rated_on, created_at,"
-            " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (product_id, user.id, int(body.buy_again), body.stars, body.reason, body.store, rated_on, stamp, stamp),
-        ).lastrowid
+        try:
+            rating_id = conn.execute(
+                "INSERT INTO ratings (product_id, user_id, buy_again, stars, reason, store, rated_on, created_at,"
+                " updated_at, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (product_id, user.id, int(body.buy_again), body.stars, body.reason, body.store, rated_on, stamp,
+                 stamp, body.client_id),
+            ).lastrowid
+        except sqlite3.IntegrityError:
+            existing = _after_conflict(conn, user, "ratings", body.client_id)
+            if existing is None:
+                raise
+            response.status_code = 200
+            return _rating(_load_rating(conn, user, existing))
         log.info("rating_created", extra={"product_id": product_id, "rating_id": rating_id})
         if body.price is not None:
             price = body.price.model_copy(update={"store": body.price.store or body.store,
@@ -735,17 +802,29 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         stamp = db.now()
         price_id = conn.execute(
             "INSERT INTO prices (product_id, user_id, rating_id, amount_cents, quantity, unit, on_offer, store,"
-            " bought_on, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " bought_on, created_at, updated_at, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (product_id, user.id, rating_id, body.amount_cents, body.quantity, body.unit, int(body.on_offer),
-             body.store, (body.bought_on or date.today()).isoformat(), stamp, stamp),
+             body.store, (body.bought_on or date.today()).isoformat(), stamp, stamp, body.client_id),
         ).lastrowid
         log.info("price_created", extra={"product_id": product_id, "price_id": price_id})
         return price_id
 
     @app.post("/api/products/{product_id}/prices", status_code=201)
-    def create_price(product_id: int, body: PriceIn, user: CurrentUser, conn: Conn) -> dict:
+    def create_price(product_id: int, body: PriceIn, user: CurrentUser, conn: Conn, response: Response) -> dict:
         _load_product(conn, user, product_id)
-        return prices.to_json(_load_price(conn, user, insert_price(conn, user, product_id, body)))
+        existing = _replayed(conn, user, "prices", body.client_id)
+        if existing is None:
+            try:
+                return prices.to_json(_load_price(conn, user, insert_price(conn, user, product_id, body)))
+            except sqlite3.IntegrityError:
+                existing = _after_conflict(conn, user, "prices", body.client_id)
+                if existing is None:
+                    raise
+        row = _load_price(conn, user, existing)
+        if row["product_id"] != product_id:
+            raise HTTPException(409, "this client id is in use")
+        response.status_code = 200
+        return prices.to_json(row)
 
     @app.get("/api/products/{product_id}/prices")
     def list_prices(product_id: int, user: CurrentUser, conn: Conn) -> dict:

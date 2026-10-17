@@ -20,6 +20,9 @@ const state = {
   product: null, // the product shown or being rated
   facets: { stores: [], categories: [] },
   verdict: "buy",
+  flash: null, // { text, error } shown once on the next view
+  holdJob: null, // an outbox job the user is still adding to
+  sentProducts: {}, // outbox job id -> product id, once its product was created
 };
 
 // ---- API ----------------------------------------------------------------
@@ -31,7 +34,42 @@ class ApiError extends Error {
   }
 }
 
-async function api(method, path, body, raw = false) {
+// No answer from the server: the network dropped, timed out, or the reverse
+// proxy couldn't reach Buybutler.
+class NetworkError extends Error {
+  constructor() {
+    super("No connection to Buybutler. Check the network and try again.");
+    this.offline = true;
+  }
+}
+
+const TIMEOUT_MS = 20000;
+const RETRY_DELAYS = [1000, 3000, 8000];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Sends a request with a time limit and repeats it after network errors and
+// gateway errors. Every request is safe to repeat: new records carry a
+// client_id, so the server never creates them twice.
+async function send(method, path, payload, headers, retries) {
+  for (let attempt = 0; ; attempt++) {
+    if (navigator.onLine === false) throw new NetworkError();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let res = null;
+    try {
+      res = await fetch(path, { method, headers, body: payload, credentials: "same-origin", signal: controller.signal });
+    } catch {
+      res = null;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res && ![502, 503, 504].includes(res.status)) return { res, repeated: attempt > 0 };
+    if (attempt >= retries) throw new NetworkError();
+    await sleep(RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)]);
+  }
+}
+
+async function api(method, path, body, { retries = RETRY_DELAYS.length } = {}) {
   const headers = { "X-Buybutler": "1" };
   let payload;
   if (body instanceof Blob) {
@@ -41,7 +79,9 @@ async function api(method, path, body, raw = false) {
     payload = JSON.stringify(body);
     headers["Content-Type"] = "application/json";
   }
-  const res = await fetch(path, { method, headers, body: payload, credentials: "same-origin" });
+  const { res, repeated } = await send(method, path, payload, headers, retries);
+  // A repeated delete whose first copy got through finds nothing left.
+  if (method === "DELETE" && repeated && res.status === 404) return null;
   if (res.status === 401 && path !== "/api/session") {
     state.user = null;
     go("#/login");
@@ -54,8 +94,185 @@ async function api(method, path, body, raw = false) {
     if (Array.isArray(detail)) detail = detail.map((d) => d.msg.replace(/^Value error, /, "")).join("; ");
     throw new ApiError(res.status, detail || `Request failed (${res.status})`);
   }
-  return raw ? res : data;
+  return data;
 }
+
+function uid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  // Plain HTTP on the LAN has no randomUUID.
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// ---- Outbox -----------------------------------------------------------------
+//
+// New products, ratings and prices are written as a job of steps into
+// IndexedDB first, then sent. When the network fails, the job stays on the
+// phone and is sent later, in order. A step's path can name an earlier
+// step ("/api/products/{product}/ratings"); its ID is filled in once known.
+
+const Outbox = (() => {
+  let opening = null;
+  const open = () => {
+    opening = opening || new Promise((resolve, reject) => {
+      const req = indexedDB.open("buybutler", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("jobs", { keyPath: "id" });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    return opening;
+  };
+  const run = async (mode, fn) => {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("jobs", mode);
+      const req = fn(tx.objectStore("jobs"));
+      tx.oncomplete = () => resolve(req ? req.result : undefined);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  };
+  return {
+    all: () => run("readonly", (s) => s.getAll()),
+    get: (id) => run("readonly", (s) => s.get(id)),
+    put: (job) => run("readwrite", (s) => s.put(job)),
+    remove: (id) => run("readwrite", (s) => s.delete(id)),
+  };
+})();
+
+// Pictures are stored as bytes: older Safari versions can't keep a Blob in
+// IndexedDB.
+async function blobStep(ref, path, blob) {
+  return { ref, method: "PUT", path, file: { type: blob.type || "image/jpeg", bytes: await blob.arrayBuffer() } };
+}
+
+function newJob(label, steps) {
+  return { id: uid(), label, created: new Date().toISOString(), steps: steps.filter(Boolean), error: null };
+}
+
+function fillPath(path, job) {
+  return path.replace(/\{(\w+)\}/g, (_, ref) => {
+    const step = job.steps.find((s) => s.ref === ref);
+    if (!step || !step.done) throw new Error(`step ${ref} not sent yet`);
+    return String(step.id);
+  });
+}
+
+async function runJob(job, retries) {
+  for (const step of job.steps) {
+    if (step.done) continue;
+    const path = fillPath(step.path, job);
+    const body = step.file ? new Blob([step.file.bytes], { type: step.file.type }) : step.body;
+    let data;
+    try {
+      data = await api(step.method, path, body, { retries });
+    } catch (err) {
+      // Saved offline, but the barcode was added meanwhile (another phone,
+      // or the lookup itself had failed): rate the existing product.
+      if (err.status === 409 && step.ref === "product" && step.body.barcode) {
+        const r = await api("GET", `/api/lookup?barcode=${encodeURIComponent(step.body.barcode)}`, undefined, { retries });
+        if (!r.product) throw err;
+        data = r.product;
+      } else {
+        throw err;
+      }
+    }
+    step.done = true;
+    step.id = data && data.id;
+    step.file = null;
+    if (step.ref === "product") state.sentProducts[job.id] = step.id;
+    await Outbox.put(job).catch(() => {});
+  }
+  await Outbox.remove(job.id).catch(() => {});
+}
+
+// Sends a new job now. Returns "sent", or "queued" when the network failed
+// and the job waits on the phone. Errors from the server (a bad value) are
+// thrown; when nothing was created yet, the job is dropped so the form can
+// be corrected.
+async function submitJob(job) {
+  let stored = true;
+  try {
+    await Outbox.put(job);
+  } catch {
+    stored = false; // private mode or no storage: send without a safety net
+  }
+  try {
+    await runJob(job, 1);
+    return "sent";
+  } catch (err) {
+    if (err.offline && stored) {
+      updateOutboxBadge();
+      return "queued";
+    }
+    if (err.status === 401 && stored) return "queued";
+    if (stored) await Outbox.remove(job.id).catch(() => {});
+    updateOutboxBadge();
+    if (job.steps.some((s) => s.done)) err.partial = true;
+    throw err;
+  }
+}
+
+let syncing = false;
+
+async function syncOutbox() {
+  if (syncing || !state.user) return;
+  syncing = true;
+  try {
+    const jobs = (await Outbox.all()).sort((a, b) => a.created.localeCompare(b.created));
+    for (const job of jobs) {
+      if (job.error || job.id === state.holdJob) continue;
+      try {
+        await runJob(job, 0);
+      } catch (err) {
+        if (err.offline || err.status === 401) break;
+        job.error = err.message;
+        await Outbox.put(job);
+      }
+    }
+  } catch {
+    // IndexedDB not available: nothing was ever queued.
+  } finally {
+    syncing = false;
+    updateOutboxBadge();
+  }
+}
+
+async function updateOutboxBadge() {
+  let jobs = [];
+  try {
+    jobs = await Outbox.all();
+  } catch {
+    jobs = [];
+  }
+  const failed = jobs.filter((j) => j.error).length;
+  const waiting = jobs.length - failed;
+  const badge = $("#outbox-badge");
+  badge.hidden = jobs.length === 0;
+  badge.textContent = [waiting && `${waiting} waiting`, failed && `${failed} not sent`].filter(Boolean).join(" · ");
+  badge.classList.toggle("is-failed", failed > 0);
+  if (!$("#view-account").hidden) renderOutbox(jobs);
+}
+
+window.addEventListener("online", syncOutbox);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) syncOutbox();
+});
+setInterval(syncOutbox, 30000);
+
+function flash(text, error = false) {
+  state.flash = { text, error };
+}
+
+function takeFlash(target) {
+  if (!state.flash) return;
+  if (state.flash.error) showError(target, new Error(state.flash.text));
+  else showInfo(target, state.flash.text);
+  state.flash = null;
+}
+
+const QUEUED = "No connection. Saved on this phone; it is sent when the connection is back.";
 
 function showError(target, err) {
   target.textContent = err.message;
@@ -189,15 +406,23 @@ async function route() {
   const parts = path.split("/").filter(Boolean);
 
   if (parts[0] !== "scan") stopCamera();
+  // A product saved offline waits for its rating only while that form is open.
+  if (parts[0] !== "pending") state.holdJob = null;
 
   if (!state.user && parts[0] !== "login") {
     try {
       state.user = await api("GET", "/api/session");
-    } catch {
+    } catch (err) {
+      if (err.offline) {
+        show("view-scan", "scan");
+        showError($("#scan-message"), err);
+        return;
+      }
       go("#/login");
       return;
     }
   }
+  if (state.user) syncOutbox();
 
   try {
     switch (parts[0]) {
@@ -209,6 +434,8 @@ async function route() {
         return showAccount();
       case "new":
         return await showProductForm(null, params.get("barcode"));
+      case "pending":
+        return await showRateForm(null, null, parts[1]);
       case "product": {
         const id = Number(parts[1]);
         if (parts[2] === "edit") return await showProductForm(id);
@@ -230,7 +457,13 @@ async function route() {
 window.addEventListener("hashchange", route);
 
 async function loadFacets() {
-  state.facets = await api("GET", "/api/facets");
+  // Only suggestions: offline, the last ones (or none) will do.
+  try {
+    state.facets = await api("GET", "/api/facets", undefined, { retries: 0 });
+  } catch (err) {
+    if (!err.offline) throw err;
+    return;
+  }
   const fill = (list, values) => {
     list.replaceChildren(...values.map((v) => el("option", { value: v })));
   };
@@ -267,7 +500,37 @@ function showAccount() {
   $("#a-user").textContent = `Logged in as ${state.user.username} (${state.user.role})`;
   $("#password-form").reset();
   showInfo($("#a-message"), "");
+  updateOutboxBadge();
 }
+
+function renderOutbox(jobs) {
+  $("#a-outbox-section").hidden = jobs.length === 0;
+  $("#a-outbox").replaceChildren(
+    ...[...jobs].sort((a, b) => a.created.localeCompare(b.created)).map((job) => {
+      const discard = el("button", { type: "button", class: "edit linkish", text: "Discard" });
+      discard.addEventListener("click", async () => {
+        if (!confirm(`Discard "${job.label}"? It was not sent.`)) return;
+        await Outbox.remove(job.id);
+        updateOutboxBadge();
+      });
+      return el("li", {},
+        el("div", { class: "head" }, el("span", { class: "word", text: job.label }), discard),
+        el("p", { class: job.error ? "message is-error" : "stamps",
+          text: job.error ? `Not sent: ${job.error}` : `Saved ${stamp(job.created)} · waiting for the connection` }));
+    }),
+  );
+}
+
+$("#a-outbox-send").addEventListener("click", async () => {
+  // Failed jobs get another try when sent by hand.
+  for (const job of await Outbox.all()) {
+    if (job.error) {
+      job.error = null;
+      await Outbox.put(job);
+    }
+  }
+  await syncOutbox();
+});
 
 $("#password-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -308,6 +571,7 @@ function scannerReady() {
 function showScan() {
   show("view-scan", "scan");
   showInfo($("#scan-message"), "");
+  takeFlash($("#scan-message"));
   $("#manual-form").reset();
   if (!navigator.mediaDevices || !window.isSecureContext) {
     $("#scan-start").disabled = true;
@@ -410,6 +674,11 @@ async function lookup(barcode) {
     state.suggestion = r.suggestion ? { ...r.suggestion, lookup: r.lookup } : { barcode, lookup: r.lookup };
     go(`#/new?barcode=${encodeURIComponent(barcode)}`);
   } catch (err) {
+    if (err.offline) {
+      state.suggestion = { barcode, lookup: "offline" };
+      go(`#/new?barcode=${encodeURIComponent(barcode)}`);
+      return;
+    }
     showError(msg, err);
   }
 }
@@ -420,6 +689,8 @@ async function showProduct(id) {
   const p = await api("GET", `/api/products/${id}`);
   state.product = p;
   show("view-product", "lists");
+  showInfo($("#p-message"), "");
+  takeFlash($("#p-message"));
 
   const box = $("#p-verdict");
   box.className = "verdict";
@@ -505,8 +776,12 @@ async function showProduct(id) {
 $("#p-delete").addEventListener("click", async () => {
   const p = state.product;
   if (!p || !confirm(`Delete ${p.name} and all its ratings?`)) return;
-  await api("DELETE", `/api/products/${p.id}`);
-  go("#/lists");
+  try {
+    await api("DELETE", `/api/products/${p.id}`);
+    go("#/lists");
+  } catch (err) {
+    showError($("#p-message"), err);
+  }
 });
 
 // ---- Product form -----------------------------------------------------------
@@ -550,6 +825,8 @@ async function showProductForm(id, barcode) {
       not_found: "Open Food Facts doesn't know this barcode. Enter the product by hand.",
       disabled: "The lookup is switched off. Enter the product by hand.",
       failed: "Open Food Facts can't be reached right now. Enter the product by hand.",
+      offline: "No connection, so the barcode can't be looked up. Enter the product by hand; "
+        + "it is saved on this phone and sent later. If it is known already, the rating goes there.",
     }[s.lookup];
     if (why) showInfo(source, why);
   }
@@ -567,27 +844,44 @@ $("#product-form").addEventListener("submit", async (ev) => {
     quantity: form.quantity.value,
     barcode: form.barcode.value.trim() || null,
   };
+  const file = form.image.files[0];
+  let job = null;
   try {
-    let p;
     if (form.dataset.id) {
-      p = await api("PATCH", `/api/products/${form.dataset.id}`, { ...body, barcode: body.barcode || "" });
-    } else {
-      body.use_suggested_image = !$("#pf-image-choice").hidden && form.use_suggested_image.checked;
-      showInfo(msg, "Saving");
-      p = await api("POST", "/api/products", body);
-      // From here on the form edits the new product, so a failed picture
-      // upload followed by another Save doesn't create it twice.
-      form.dataset.id = p.id;
-      form.dataset.created = "1";
+      let p = await api("PATCH", `/api/products/${form.dataset.id}`, { ...body, barcode: body.barcode || "" });
+      if (file) {
+        showInfo(msg, "Uploading the picture");
+        p = await api("PUT", `/api/products/${p.id}/image`, await shrink(file));
+      }
+      go(`#/product/${p.id}`);
+      return;
     }
-    const file = form.image.files[0];
-    if (file) {
-      showInfo(msg, "Uploading the picture");
-      p = await api("PUT", `/api/products/${p.id}/image`, await shrink(file));
-    }
+    body.use_suggested_image = !$("#pf-image-choice").hidden && form.use_suggested_image.checked;
+    body.client_id = uid();
+    job = newJob(`New product: ${body.name}`, [
+      { ref: "product", method: "POST", path: "/api/products", body },
+      file && (await blobStep("image", "/api/products/{product}/image", await shrink(file))),
+    ]);
+    showInfo(msg, "Saving");
+    // Held from the start: if it ends up queued, its rating is added to the
+    // same job before anything is sent.
+    state.holdJob = job.id;
+    const result = await submitJob(job);
     state.suggestion = null;
-    go(form.dataset.created ? `#/product/${p.id}/rate` : `#/product/${p.id}`);
+    if (result === "sent") {
+      state.holdJob = null;
+      go(`#/product/${job.steps[0].id}/rate`);
+    } else {
+      flash("No connection. The product is saved on this phone; rate it now, both are sent later.");
+      go(`#/pending/${job.id}`);
+    }
   } catch (err) {
+    state.holdJob = null;
+    if (err.partial) {
+      flash(`The product was saved, but not the picture: ${err.message}`, true);
+      go(`#/product/${job.steps[0].id}/rate`);
+      return;
+    }
     showError(msg, err);
   }
 });
@@ -618,17 +912,34 @@ function renderStars() {
   $("#r-stars-value").textContent = chosenStars ? `${chosenStars} of 5` : "none";
 }
 
-async function showRateForm(productId, ratingId) {
-  await loadFacets();
-  const p = await api("GET", `/api/products/${productId}`);
+async function showRateForm(productId, ratingId, pendingJobId = null) {
+  let p;
+  const form = $("#rate-form");
+  delete form.dataset.pending;
+  if (pendingJobId) {
+    // The product exists only in the outbox so far.
+    const job = await Outbox.get(pendingJobId).catch(() => null);
+    if (!job) {
+      const sent = state.sentProducts[pendingJobId];
+      if (sent) return go(`#/product/${sent}/rate`);
+      return go("#/scan");
+    }
+    state.holdJob = job.id;
+    const body = job.steps[0].body;
+    p = { id: null, name: body.name, quantity: body.quantity, price: null, rating: null, ratings: [] };
+    form.dataset.pending = job.id;
+  } else {
+    await loadFacets();
+    p = await api("GET", `/api/products/${productId}`);
+  }
   state.product = p;
   show("view-rate", "scan");
-  const form = $("#rate-form");
   form.reset();
   showInfo($("#r-message"), "");
+  takeFlash($("#r-message"));
   $("#r-product").textContent = p.name;
-  $("#r-cancel").href = `#/product/${p.id}`;
-  form.dataset.product = p.id;
+  $("#r-cancel").href = p.id ? `#/product/${p.id}` : "#/scan";
+  form.dataset.product = p.id || "";
 
   fillPriceFields(form, null);
   // Prices of an existing rating are edited in the price list.
@@ -674,28 +985,56 @@ $("#rate-form").addEventListener("submit", async (ev) => {
     store: form.store.value,
     rated_on: form.rated_on.value || today(),
   };
+  const file = form.photo.files[0];
   try {
-    if (!form.dataset.rating) {
-      const price = readPrice(form);
-      if (price) body.price = price;
-    }
-    let r;
     if (form.dataset.rating) {
       if (chosenStars === null) body.clear_stars = true;
-      r = await api("PATCH", `/api/ratings/${form.dataset.rating}`, body);
-    } else {
-      r = await api("POST", `/api/products/${form.dataset.product}/ratings`, body);
-      // A failed photo upload followed by another Save edits this rating
-      // instead of adding a second one.
-      form.dataset.rating = r.id;
+      const r = await api("PATCH", `/api/ratings/${form.dataset.rating}`, body);
+      if (file) {
+        showInfo(msg, "Uploading the photo");
+        await api("PUT", `/api/ratings/${r.id}/photo`, await shrink(file));
+      }
+      go(`#/product/${form.dataset.product}`);
+      return;
     }
-    const file = form.photo.files[0];
-    if (file) {
-      showInfo(msg, "Uploading the photo");
-      await api("PUT", `/api/ratings/${r.id}/photo`, await shrink(file));
+    const price = readPrice(form);
+    if (price) body.price = price;
+    body.client_id = uid();
+    const photo = file && (await blobStep("photo", "/api/ratings/{rating}/photo", await shrink(file)));
+
+    if (form.dataset.pending) {
+      // Added to the product's job; both go out together, later.
+      const job = await Outbox.get(form.dataset.pending);
+      if (job) {
+        job.steps.push({ ref: "rating", method: "POST", path: "/api/products/{product}/ratings", body });
+        if (photo) job.steps.push(photo);
+        job.label = `${job.label}, rated`;
+        await Outbox.put(job);
+        state.holdJob = null;
+        syncOutbox();
+        flash(QUEUED);
+        go("#/scan");
+        return;
+      }
+    }
+
+    showInfo(msg, "Saving");
+    const job = newJob(`Rating: ${state.product.name}`, [
+      { ref: "rating", method: "POST", path: `/api/products/${form.dataset.product}/ratings`, body },
+      photo,
+    ]);
+    if ((await submitJob(job)) === "queued") {
+      flash(QUEUED);
+      go("#/scan");
+      return;
     }
     go(`#/product/${form.dataset.product}`);
   } catch (err) {
+    if (err.partial) {
+      flash(`The rating was saved, but not the photo: ${err.message}`, true);
+      go(`#/product/${form.dataset.product}`);
+      return;
+    }
     showError(msg, err);
   }
 });
@@ -703,8 +1042,12 @@ $("#rate-form").addEventListener("submit", async (ev) => {
 $("#r-delete").addEventListener("click", async () => {
   const form = $("#rate-form");
   if (!form.dataset.rating || !confirm("Delete this rating?")) return;
-  await api("DELETE", `/api/ratings/${form.dataset.rating}`);
-  go(`#/product/${form.dataset.product}`);
+  try {
+    await api("DELETE", `/api/ratings/${form.dataset.rating}`);
+    go(`#/product/${form.dataset.product}`);
+  } catch (err) {
+    showError($("#r-message"), err);
+  }
 });
 
 // ---- Price form -------------------------------------------------------------
@@ -757,7 +1100,15 @@ $("#price-form").addEventListener("submit", async (ev) => {
       }
       await api("PATCH", `/api/prices/${form.dataset.price}`, body);
     } else {
-      await api("POST", `/api/products/${form.dataset.product}/prices`, body);
+      body.client_id = uid();
+      const job = newJob(`Price: ${state.product.name}`, [
+        { ref: "price", method: "POST", path: `/api/products/${form.dataset.product}/prices`, body },
+      ]);
+      if ((await submitJob(job)) === "queued") {
+        flash(QUEUED);
+        go("#/scan");
+        return;
+      }
     }
     go(`#/product/${form.dataset.product}`);
   } catch (err) {
@@ -768,8 +1119,12 @@ $("#price-form").addEventListener("submit", async (ev) => {
 $("#pr-delete").addEventListener("click", async () => {
   const form = $("#price-form");
   if (!form.dataset.price || !confirm("Delete this price?")) return;
-  await api("DELETE", `/api/prices/${form.dataset.price}`);
-  go(`#/product/${form.dataset.product}`);
+  try {
+    await api("DELETE", `/api/prices/${form.dataset.price}`);
+    go(`#/product/${form.dataset.product}`);
+  } catch (err) {
+    showError($("#pr-message"), err);
+  }
 });
 
 // Phones take photos of several megabytes; they are scaled to at most

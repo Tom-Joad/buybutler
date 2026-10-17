@@ -12,7 +12,13 @@ Optionally, note what you paid: the price, the quantity it was for
 keeps its price history with the price per kg, litre or piece, and the
 lowest and highest regular price.
 
-Every entry keeps the time it was made and last changed. Rating a product
+Every entry keeps the time it was made and last changed.
+
+Made for the shop's poor reception: requests that get no answer are
+repeated, and new ratings, products and prices that still can't be sent are
+saved on the phone and sent when the connection is back ("2 waiting" in the
+top bar, the list under **Account**). A repeated request never creates an
+entry twice. Rating a product
 again adds to its history instead of replacing it ("recipe changed, now too
 sweet"); the newest rating is the verdict.
 
@@ -191,6 +197,9 @@ check calls `http://127.0.0.1:8080/health`.
 | Logged out after a password change | Intended: a new password ends every other session |
 | "Too many failed logins" | Wait 15 minutes, or restart the container (also when someone else guessed wrong for your account) |
 | Wrong client address in the log | `BUYBUTLER_TRUSTED_PROXIES` doesn't include the reverse proxy |
+| "No connection to Buybutler" | No answer after several tries (network, or the reverse proxy can't reach the container). New entries are kept on the phone and sent later |
+| "1 not sent" in the top bar | The server refused a saved entry (e.g. a value it doesn't accept); **Account** shows why, with **Send now** and **Discard** |
+| Entries waiting on one phone | They live in that browser's storage; clearing the site data or a private tab drops them |
 
 Verify the signature:
 

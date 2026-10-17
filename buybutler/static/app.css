@@ -63,6 +63,26 @@ body {
   border-bottom: var(--stroke-structural) solid transparent;
 }
 
+/* Entries saved on the phone that still have to be sent. A status colour
+   with words, never red. */
+.outbox-badge {
+  position: absolute;
+  right: var(--space-20);
+  bottom: -14px;
+  padding: 3px var(--space-6);
+  background: var(--status-warning);
+  color: var(--ink);
+  font: var(--text-nav);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.outbox-badge.is-failed {
+  background: var(--status-negative);
+  color: var(--paper-bright);
+}
+
 .bar nav a[aria-current="page"] {
   color: var(--text-on-ink);
   border-bottom-color: var(--red);
@@ -160,6 +180,30 @@ h1 {
 
 textarea {
   resize: vertical;
+}
+
+/* iOS gives date fields an intrinsic width wider than a phone column. */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 46px;
+  text-align: left;
+}
+
+.field input {
+  min-width: 0;
+}
+
+.linkish {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .field input[type="file"] {

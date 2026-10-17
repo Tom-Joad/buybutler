@@ -25,6 +25,7 @@
     <a href="#/lists" data-nav="lists">Lists</a>
     <a href="#/account" data-nav="account">Account</a>
   </nav>
+  <a class="outbox-badge" id="outbox-badge" href="#/account" hidden></a>
 </header>
 
 <main id="main">
@@ -72,6 +73,7 @@
 
   <!-- Product -->
   <section class="view" id="view-product" hidden>
+    <p class="message" id="p-message" role="status"></p>
     <div class="verdict" id="p-verdict"></div>
     <div class="product-head">
       <img id="p-image" alt="" hidden>
@@ -271,6 +273,12 @@
   <section class="view" id="view-account" hidden>
     <h1>Account</h1>
     <p class="meta" id="a-user"></p>
+    <div id="a-outbox-section" hidden>
+      <h2 class="section-title">Waiting on this phone</h2>
+      <p class="meta">Saved without a connection; sent as soon as Buybutler can be reached.</p>
+      <ol class="history" id="a-outbox"></ol>
+      <button class="btn btn--secondary" id="a-outbox-send" type="button">Send now</button>
+    </div>
     <form id="password-form" class="stack">
       <h2 class="section-title">Change password</h2>
       <label class="field">

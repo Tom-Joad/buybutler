@@ -124,6 +124,10 @@ R=$(http POST /api/products '{"name":"Smoke bread","barcode":"4000000000001"}')
 R=$(http POST /api/products/1/ratings '{"buy_again":false,"stars":2,"reason":"Too dry","store":"Corner shop"}')
 [[ $(status_of "$R") == 201 ]] || fail "rating not created: $R"
 grep -q '"created_at":"20[0-9-]*T' <<<"$R" || fail "rating has no time stamp"
+R=$(http POST /api/products/1/ratings '{"buy_again":true,"client_id":"0f8fad5b-d9cb-469f-a165-70867728950e"}')
+[[ $(status_of "$R") == 200 || $(status_of "$R") == 201 ]] || fail "rating with client_id not created: $R"
+R=$(http POST /api/products/1/ratings '{"buy_again":true,"client_id":"0f8fad5b-d9cb-469f-a165-70867728950e"}')
+[[ $(status_of "$R") == 200 ]] || fail "repeated request was not answered with the first rating: $R"
 R=$(http POST /api/products/1/prices '{"amount_cents":249,"quantity":500,"unit":"g","on_offer":true}')
 [[ $(status_of "$R") == 201 ]] || fail "price not created: $R"
 grep -q '"unit_price":{"amount_cents":498,"per":"kg"}' <<<"$R" || fail "no unit price: $R"
@@ -139,7 +143,7 @@ BACKUP=$(find "$WORK/config/backups" -name 'buybutler-*.sqlite3' | head -n1)
 echo "== restart and re-create keep the data"
 docker restart "$NAME" >/dev/null
 wait_healthy
-R=$(http GET /api/products?verdict=skip)
+R=$(http GET /api/products?verdict=all)
 [[ $(status_of "$R") == 200 ]] || fail "session lost after restart: $R"
 grep -q 'Smoke bread' <<<"$R" || fail "product lost after restart"
 docker rm -f "$NAME" >/dev/null
