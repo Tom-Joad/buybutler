@@ -1055,6 +1055,22 @@ function showAccount() {
   if (state.user.role === "admin") loadUsers().catch((err) => showError($("#u-message"), err));
 }
 
+// Changes to users ask for the admin's own password (see AdminConfirm on the server).
+function adminPassword() {
+  const password = $("#u-password").value;
+  if (!password) {
+    $("#u-password").focus();
+    throw new Error("Enter your password first.");
+  }
+  return password;
+}
+
+async function adminChange(method, path, body) {
+  const result = await api(method, path, { ...body, admin_password: adminPassword() }, { retries: 0 });
+  $("#u-password").value = "";
+  return result;
+}
+
 async function loadUsers() {
   const { users } = await api("GET", "/api/users");
   renderUsers(users);
@@ -1070,7 +1086,7 @@ function renderUsers(users) {
       role.value = u.role;
       role.addEventListener("change", async () => {
         try {
-          renderUsers((await api("PATCH", `/api/users/${u.id}`, { role: role.value })).users);
+          renderUsers((await adminChange("PATCH", `/api/users/${u.id}`, { role: role.value })).users);
         } catch (err) {
           role.value = u.role;
           showError($("#u-message"), err);
@@ -1079,10 +1095,11 @@ function renderUsers(users) {
       actions.append(role);
       const reset = el("button", { type: "button", class: "edit linkish", text: "New password" });
       reset.addEventListener("click", async () => {
-        const password = prompt(`New password for ${u.username} (at least 10 characters). Their sessions end.`);
-        if (!password) return;
         try {
-          await api("POST", `/api/users/${u.id}/password`, { password });
+          adminPassword();
+          const password = prompt(`New password for ${u.username} (at least 10 characters). Their sessions end.`);
+          if (!password) return;
+          await adminChange("POST", `/api/users/${u.id}/password`, { password });
           showInfo($("#u-message"), `Password of ${u.username} changed.`);
         } catch (err) {
           showError($("#u-message"), err);
@@ -1092,10 +1109,11 @@ function renderUsers(users) {
       if (u.two_factor) {
         const reset2fa = el("button", { type: "button", class: "edit linkish", text: "Reset two-factor" });
         reset2fa.addEventListener("click", async () => {
-          if (!confirm(`Remove the authenticator app, passkeys and recovery codes of ${u.username}? `
-            + "Their password alone logs in again.")) return;
           try {
-            renderUsers((await api("POST", `/api/users/${u.id}/reset-2fa`)).users);
+            adminPassword();
+            if (!confirm(`Remove the authenticator app, passkeys and recovery codes of ${u.username}? `
+              + "Their password alone logs in again.")) return;
+            renderUsers((await adminChange("POST", `/api/users/${u.id}/reset-2fa`, {})).users);
             showInfo($("#u-message"), `Two-factor login of ${u.username} removed.`);
           } catch (err) {
             showError($("#u-message"), err);
@@ -1106,9 +1124,10 @@ function renderUsers(users) {
       if (!me) {
         const remove = el("button", { type: "button", class: "edit linkish", text: "Delete" });
         remove.addEventListener("click", async () => {
-          if (!confirm(`Delete ${u.username}? Lists only they use are deleted too.`)) return;
           try {
-            await api("DELETE", `/api/users/${u.id}`);
+            adminPassword();
+            if (!confirm(`Delete ${u.username}? Lists only they use are deleted too.`)) return;
+            await adminChange("DELETE", `/api/users/${u.id}`, {});
             await loadUsers();
           } catch (err) {
             showError($("#u-message"), err);
@@ -1678,7 +1697,7 @@ $("#user-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const form = ev.currentTarget;
   try {
-    const { users } = await api("POST", "/api/users", {
+    const { users } = await adminChange("POST", "/api/users", {
       username: form.username.value.trim(), password: form.password.value, role: form.role.value,
     });
     renderUsers(users);

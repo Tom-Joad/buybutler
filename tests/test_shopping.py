@@ -179,3 +179,17 @@ def test_deleting_the_product_or_list_removes_its_items(logged_in, settings):
     add(logged_in, product_id=p["id"])
     logged_in.delete(f"/api/products/{p['id']}", headers=H)
     assert items(logged_in) == []
+
+
+def test_remembered_order_is_capped(logged_in, settings):
+    first = [f"t:item {i}" for i in range(2000)]
+    second = [f"t:other {i}" for i in range(2000)]
+    for keys in (first, second):
+        r = logged_in.put("/api/shopping/order", json={"store": "Big", "keys": keys}, headers=H)
+        assert r.status_code == 204
+    with db.session(settings.database) as conn:
+        rows = conn.execute("SELECT item_key FROM store_order WHERE store = 'Big'").fetchall()
+    kept = {r[0] for r in rows}
+    assert len(kept) == 2000
+    # The items just shown keep their places; the oldest ones are forgotten.
+    assert set(second) <= kept

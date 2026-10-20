@@ -100,17 +100,27 @@ class MemberPatch(BaseModel):
     role: Literal["owner", "editor", "viewer"]
 
 
-class UserIn(BaseModel):
+# Every change to users asks for the admin's own password: a stolen admin
+# session alone must not be able to take over other accounts (reset their
+# second factors, set their password) or make new admins.
+AdminPassword = Annotated[str, Field(max_length=1024)]
+
+
+class AdminConfirm(BaseModel):
+    admin_password: AdminPassword
+
+
+class UserIn(AdminConfirm):
     username: str = Field(max_length=auth.USERNAME_MAX)
     password: str = Field(max_length=1024)
     role: Literal["admin", "member"] = "member"
 
 
-class UserPatch(BaseModel):
+class UserPatch(AdminConfirm):
     role: Literal["admin", "member"]
 
 
-class PasswordSet(BaseModel):
+class PasswordSet(AdminConfirm):
     password: str = Field(max_length=1024)
 
 
@@ -1048,8 +1058,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return users_json(conn)
 
     @app.post("/api/users", status_code=201)
-    def add_user(body: UserIn, user: CurrentUser, conn: Conn) -> dict:
+    def add_user(body: UserIn, request: Request, user: CurrentUser, conn: Conn) -> dict:
         admin_only(user)
+        confirm_password(request, conn, user, body.admin_password)
         try:
             created = auth.create_user(conn, body.username, body.password, body.role)
         except auth.AuthError as exc:
@@ -1058,8 +1069,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return users_json(conn)
 
     @app.patch("/api/users/{user_id}")
-    def change_user(user_id: int, body: UserPatch, user: CurrentUser, conn: Conn) -> dict:
+    def change_user(user_id: int, body: UserPatch, request: Request, user: CurrentUser, conn: Conn) -> dict:
         admin_only(user)
+        confirm_password(request, conn, user, body.admin_password)
         row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
         if row is None:
             raise HTTPException(404, "user not found")
@@ -1072,8 +1084,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return users_json(conn)
 
     @app.post("/api/users/{user_id}/password", status_code=204)
-    def reset_password(user_id: int, body: PasswordSet, user: CurrentUser, conn: Conn) -> None:
+    def reset_password(user_id: int, body: PasswordSet, request: Request, user: CurrentUser, conn: Conn) -> None:
         admin_only(user)
+        confirm_password(request, conn, user, body.admin_password)
         if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
             raise HTTPException(404, "user not found")
         try:
@@ -1083,9 +1096,11 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         log.info("password_reset", extra={"user_id": user_id})
 
     @app.post("/api/users/{user_id}/reset-2fa")
-    def reset_two_factor(user_id: int, user: CurrentUser, conn: Conn) -> dict:
+    def reset_two_factor(user_id: int, body: AdminConfirm, request: Request, user: CurrentUser,
+                         conn: Conn) -> dict:
         """For a user who lost their phone and their recovery codes."""
         admin_only(user)
+        confirm_password(request, conn, user, body.admin_password)
         if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
             raise HTTPException(404, "user not found")
         twofactor.reset(conn, user_id)
@@ -1093,8 +1108,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return users_json(conn)
 
     @app.delete("/api/users/{user_id}", status_code=204)
-    def delete_user(user_id: int, user: CurrentUser, conn: Conn) -> None:
+    def delete_user(user_id: int, body: AdminConfirm, request: Request, user: CurrentUser, conn: Conn) -> None:
         admin_only(user)
+        confirm_password(request, conn, user, body.admin_password)
         if user_id == user.id:
             raise HTTPException(409, "you can't delete yourself")
         try:
@@ -1668,6 +1684,13 @@ def run() -> None:
             "session_days": settings.session_days,
         },
     )
+    if settings.trusted_proxies.strip() == "*":
+        # The default, so a fresh install works behind any reverse proxy; but
+        # then anyone can set X-Forwarded-For and the per-address login limit
+        # counts whatever address they claim.
+        log.warning("trusted_proxies_any", extra={
+            "hint": "set BUYBUTLER_TRUSTED_PROXIES to the reverse proxy's address",
+        })
     uvicorn.run(
         create_app(settings),
         host=settings.host,

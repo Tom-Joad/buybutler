@@ -20,6 +20,8 @@ from . import db
 TEXT_MAX = 100
 QUANTITY_MAX = 20
 STORE_MAX = 100
+# Remembered places per list and store.
+ORDER_MAX = 2000
 
 
 class ShoppingError(ValueError):
@@ -214,6 +216,23 @@ def set_order(conn: sqlite3.Connection, list_id: int, store: str, keys: list[str
     for slot, key in zip(slots, keys):
         order[slot] = key
     order += keys[len(slots):]
+    # Keys of items gone long ago would pile up for ever. Beyond the limit,
+    # remembered keys that aren't shown are forgotten, from the end; the
+    # shown ones always keep their places.
+    if len(order) > ORDER_MAX:
+        excess = len(order) - ORDER_MAX
+        dropped = []
+        for key in reversed(order):
+            if len(dropped) == excess:
+                break
+            if key not in shown:
+                dropped.append(key)
+        gone = set(dropped)
+        order = [key for key in order if key not in gone]
+        conn.executemany(
+            "DELETE FROM store_order WHERE list_id = ? AND store = ? AND item_key = ?",
+            [(list_id, store, key) for key in dropped],
+        )
     stamp = db.now()
     for position, key in enumerate(order):
         conn.execute(
