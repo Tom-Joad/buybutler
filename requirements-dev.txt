@@ -1,2 +1,5 @@
 -r requirements.txt
 pytest==9.1.1
+# starlette's TestClient wants httpx2; with plain httpx it warns that
+# support is going away.
+httpx2==2.15.1

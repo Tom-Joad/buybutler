@@ -9,7 +9,7 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 # linuxserver.io's Alpine base: s6-overlay, PUID/PGID/UMASK/TZ, the abc user
 # and docker mods, as in every linuxserver.io container.
 # Pinned by digest (a multi-arch index); Dependabot proposes new digests.
-FROM ghcr.io/linuxserver/baseimage-alpine:3.24@sha256:d2deff7a9aff1388bd79ded33a4efda6bd4b26358f9234a23deccba724738fea
+FROM ghcr.io/linuxserver/baseimage-alpine:3.24@sha256:b661ece23fbc86a96a0c014c911c36b923f3c767a73255a5131eaae9f103167c
 
 # image.source is what makes the GHCR package inherit the repository's
 # visibility instead of staying private on its own.

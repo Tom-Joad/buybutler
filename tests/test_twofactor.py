@@ -425,8 +425,8 @@ def test_admin_resets_two_factor(logged_in, settings):
     enable_totp(sam, settings, "sam")
     users = {u["username"]: u for u in logged_in.get("/api/users").json()["users"]}
     assert users["sam"]["two_factor"] is True and users["tj"]["two_factor"] is False
-    assert sam.post(f"/api/users/{users['tj']['id']}/reset-2fa", headers=H).status_code == 403
-    r = logged_in.post(f"/api/users/{users['sam']['id']}/reset-2fa", headers=H)
+    assert sam.post(f"/api/users/{users['tj']['id']}/reset-2fa", json={"admin_password": PASSWORD}, headers=H).status_code == 403
+    r = logged_in.post(f"/api/users/{users['sam']['id']}/reset-2fa", json={"admin_password": PASSWORD}, headers=H)
     assert {u["username"]: u["two_factor"] for u in r.json()["users"]}["sam"] is False
     assert "username" in login(new_client(settings), "sam")
 

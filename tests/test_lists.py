@@ -179,24 +179,27 @@ def test_member_can_leave(logged_in, settings, home):
 
 # ---- users (admins) ------------------------------------------------------
 
+# Changes to users carry the admin's own password.
+ADMIN = {"admin_password": PASSWORD}
+
 
 def test_only_admins_manage_users(logged_in, settings, home):
     add_user(settings, "sam")
     sam = login(logged_in.app, "sam")
     assert sam.get("/api/users").status_code == 403
-    assert sam.post("/api/users", json={"username": "x", "password": PASSWORD}, headers=H).status_code == 403
+    assert sam.post("/api/users", json={"username": "x", "password": PASSWORD, **ADMIN}, headers=H).status_code == 403
 
 
 def test_admin_creates_resets_and_deletes(logged_in, settings, home):
-    r = logged_in.post("/api/users", json={"username": "kim", "password": PASSWORD}, headers=H)
+    r = logged_in.post("/api/users", json={"username": "kim", "password": PASSWORD, **ADMIN}, headers=H)
     assert r.status_code == 201
     kim = next(u for u in r.json()["users"] if u["username"] == "kim")
     assert kim["role"] == "member" and kim["lists"] == 0 and kim["created_at"].endswith("Z")
-    assert logged_in.post("/api/users", json={"username": "kim", "password": PASSWORD}, headers=H).status_code == 400
-    assert logged_in.post("/api/users", json={"username": "x", "password": "short"}, headers=H).status_code == 400
+    assert logged_in.post("/api/users", json={"username": "kim", "password": PASSWORD, **ADMIN}, headers=H).status_code == 400
+    assert logged_in.post("/api/users", json={"username": "x", "password": "short", **ADMIN}, headers=H).status_code == 400
 
     session = login(logged_in.app, "kim")
-    assert logged_in.post(f"/api/users/{kim['id']}/password", json={"password": "a brand new one"},
+    assert logged_in.post(f"/api/users/{kim['id']}/password", json={"password": "a brand new one", **ADMIN},
                           headers=H).status_code == 204
     assert session.get("/api/session").status_code == 401
 
@@ -205,7 +208,7 @@ def test_admin_creates_resets_and_deletes(logged_in, settings, home):
     kim_client.post("/api/session", json={"username": "kim", "password": "a brand new one"}, headers=H)
     own = kim_client.post("/api/lists", json={"name": "Kim's"}, headers=H).json()["id"]
     make_product(use(kim_client, own), name="Kim's thing")
-    assert logged_in.delete(f"/api/users/{kim['id']}", headers=H).status_code == 204
+    assert logged_in.request("DELETE", f"/api/users/{kim['id']}", json=ADMIN, headers=H).status_code == 204
     with db.session(settings.database) as conn:
         assert conn.execute("SELECT COUNT(*) FROM lists WHERE id = ?", (own,)).fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0
@@ -217,19 +220,39 @@ def test_shared_list_needs_another_owner_before_delete(logged_in, settings, home
     shared = kim.post("/api/lists", json={"name": "Shared"}, headers=H).json()["id"]
     share(kim, shared, "tj", "editor")
     kim_id = next(u["id"] for u in logged_in.get("/api/users").json()["users"] if u["username"] == "kim")
-    r = logged_in.delete(f"/api/users/{kim_id}", headers=H)
+    r = logged_in.request("DELETE", f"/api/users/{kim_id}", json=ADMIN, headers=H)
     assert r.status_code == 409 and "only owner" in r.json()["detail"]
 
 
 def test_last_admin_is_protected(logged_in, settings, home):
     me = next(u for u in logged_in.get("/api/users").json()["users"] if u["username"] == "tj")
-    assert logged_in.patch(f"/api/users/{me['id']}", json={"role": "member"}, headers=H).status_code == 409
-    assert logged_in.delete(f"/api/users/{me['id']}", headers=H).status_code == 409
+    assert logged_in.patch(f"/api/users/{me['id']}", json={"role": "member", **ADMIN}, headers=H).status_code == 409
+    assert logged_in.request("DELETE", f"/api/users/{me['id']}", json=ADMIN, headers=H).status_code == 409
     add_user(settings, "sam", "admin")
     sam_id = next(u["id"] for u in logged_in.get("/api/users").json()["users"] if u["username"] == "sam")
-    assert logged_in.patch(f"/api/users/{me['id']}", json={"role": "member"}, headers=H).status_code == 200
+    assert logged_in.patch(f"/api/users/{me['id']}", json={"role": "member", **ADMIN}, headers=H).status_code == 200
     assert logged_in.get("/api/users").status_code == 403
     assert sam_id
+
+
+def test_user_changes_need_the_admins_password(logged_in, settings, home):
+    add_user(settings, "kim")
+    kim_id = next(u["id"] for u in logged_in.get("/api/users").json()["users"] if u["username"] == "kim")
+    wrong = {"admin_password": "not my password"}
+    calls = [
+        ("POST", "/api/users", {"username": "eve", "password": PASSWORD, "role": "admin"}),
+        ("PATCH", f"/api/users/{kim_id}", {"role": "admin"}),
+        ("POST", f"/api/users/{kim_id}/password", {"password": "taken over now"}),
+        ("POST", f"/api/users/{kim_id}/reset-2fa", {}),
+        ("DELETE", f"/api/users/{kim_id}", {}),
+    ]
+    for method, path, body in calls:
+        # A session alone isn't enough: without the password the change is refused.
+        assert logged_in.request(method, path, json=body, headers=H).status_code == 422, path
+        assert logged_in.request(method, path, json={**body, **wrong}, headers=H).status_code in (400, 429), path
+    users = {u["username"]: u for u in logged_in.get("/api/users").json()["users"]}
+    assert "eve" not in users and users["kim"]["role"] == "member"
+    assert "username" in login(logged_in.app, "kim").get("/api/session").json()
 
 
 # ---- migration -----------------------------------------------------------

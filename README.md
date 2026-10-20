@@ -159,6 +159,9 @@ container's user, so files keep the `PUID`/`PGID` owner.
 | `backup` | Write a consistent copy of the database to `/config/backups/` |
 
 The same is possible in the interface under **Account → Users**, for admins.
+Every change there asks for the admin's own password, so a stolen admin
+session alone can't reset another user's password or second factors, or
+make new admins.
 
 ## Lists and sharing
 

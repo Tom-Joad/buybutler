@@ -4,6 +4,28 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [0.11.0] - 2026-10-20
+
+**Needs action when upgrading** only for scripts that call the user
+endpoints (`/api/users…`): they now send `admin_password`.
+
+### Security
+- **Changes to users ask for the admin's own password:** adding a user,
+  changing a role, setting a password, resetting two-factor login and
+  deleting a user. A stolen admin session could take over every other
+  account (remove its second factors, then set its password), and an admin
+  could change their own password through the user list without the old
+  one. Wrong passwords count against the login limit.
+
+### Changed
+- A start with `BUYBUTLER_TRUSTED_PROXIES=*` (the default) logs a warning
+  to set the reverse proxy's address instead.
+- New base image digest (`linuxserver/baseimage-alpine:3.24`).
+
+### Fixed
+- The remembered order of the shopping list keeps at most 2000 places per
+  store; places of items gone long ago no longer pile up.
+
 ## [0.10.0] - 2026-10-18
 
 ### Added
@@ -135,6 +157,7 @@ need action when upgrading; the entry says so.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[0.11.0]: https://github.com/Tom-Joad/buybutler/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Tom-Joad/buybutler/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Tom-Joad/buybutler/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Tom-Joad/buybutler/compare/v0.7.0...v0.8.0
