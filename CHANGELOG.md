@@ -4,6 +4,18 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [0.13.0] - 2026-10-21
+
+### Added
+- **Add many** (#24) on the Scan view: each barcode shows a card with OK and
+  Skip, and after OK the camera goes on to the next product at once. The
+  server looks the barcode up in Open Food Facts and saves the product
+  unrated (new endpoint `POST /api/products/scan`); a barcode Open Food Facts
+  doesn't know is saved with the barcode as its name. The round's list shows
+  what came back, with links to rate or name each product. Barcodes the
+  list has already are not added twice; without reception the products wait
+  in the outbox.
+
 ## [0.12.0] - 2026-10-21
 
 ### Added
@@ -168,6 +180,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[0.13.0]: https://github.com/Tom-Joad/buybutler/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Tom-Joad/buybutler/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Tom-Joad/buybutler/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Tom-Joad/buybutler/compare/v0.9.0...v0.10.0

@@ -115,6 +115,7 @@ def test_viewer_reads_but_cant_write(logged_in, settings, home):
     assert len(sam.get("/api/products").json()["products"]) == 1
     refused = [
         sam.post("/api/products", json={"name": "x"}, headers=H),
+        sam.post("/api/products/scan", json={"barcode": "4000000000002"}, headers=H),
         sam.patch(f"/api/products/{p['id']}", json={"name": "x"}, headers=H),
         sam.delete(f"/api/products/{p['id']}", headers=H),
         sam.put(f"/api/products/{p['id']}/image", content=JPEG, headers=H),

@@ -440,6 +440,64 @@ def test_suggested_image_only_from_open_food_facts(settings, fake_off):
     assert fake_off.calls == []
 
 
+def scan(c, barcode: str, client_id: str | None = None):
+    body = {"barcode": barcode} | ({"client_id": client_id} if client_id else {})
+    return c.post("/api/products/scan", json=body, headers=H)
+
+
+def test_scan_adds_from_open_food_facts(logged_in, fake_off):
+    r = scan(logged_in, "4000000000001", "scan-0000000000000001")
+    assert r.status_code == 201
+    p = r.json()
+    assert (p["scan"], p["lookup"]) == ("added", "found")
+    assert (p["name"], p["brand"], p["category"], p["quantity"]) == ("Naturjoghurt", "Example Dairy", "Yoghurts", "500 g")
+    assert p["barcode"] == "4000000000001" and p["rating"] is None and p["source"] == "openfoodfacts"
+    # The picture follows in the background.
+    assert logged_in.get(f"/api/products/{p['id']}").json()["image"].startswith("/images/products/")
+
+
+def test_scan_unknown_barcode_is_named_after_it(logged_in, fake_off):
+    p = scan(logged_in, "4000000000099").json()
+    assert (p["scan"], p["lookup"], p["name"], p["source"]) == ("added", "not_found", "4000000000099", "manual")
+    fake_off.down = True
+    p = scan(logged_in, "4000000000098").json()
+    assert (p["scan"], p["lookup"], p["name"]) == ("added", "failed", "4000000000098")
+
+
+def test_scan_known_barcode_returns_the_product(logged_in, fake_off):
+    mine = make_product(logged_in, barcode="4000000000002", name="Mine")
+    r = scan(logged_in, "4000000000002")
+    assert r.status_code == 200
+    assert (r.json()["id"], r.json()["scan"]) == (mine["id"], "known")
+    assert fake_off.calls == []
+    assert len(logged_in.get("/api/products").json()["products"]) == 1
+
+
+def test_scan_repeated_request_returns_the_first(logged_in, fake_off):
+    first = scan(logged_in, "4000000000001", "scan-0000000000000002").json()
+    again = scan(logged_in, "4000000000001", "scan-0000000000000002")
+    assert again.status_code == 200
+    assert (again.json()["id"], again.json()["scan"]) == (first["id"], "added")
+    assert len(logged_in.get("/api/products").json()["products"]) == 1
+
+
+def test_scan_checks_the_barcode(logged_in):
+    assert scan(logged_in, "12ab").status_code == 422
+    assert scan(logged_in, "123").status_code == 422
+
+
+def test_scan_without_lookup(settings, monkeypatch, fake_off):
+    monkeypatch.setenv("BUYBUTLER_OFF_LOOKUP", "false")
+    app = create_app(config.load(), transport=httpx.MockTransport(fake_off.handler))
+    with TestClient(app) as c:
+        with db.session(settings.database) as conn:
+            auth.create_user(conn, "tj", PASSWORD)
+        c.post("/api/session", json={"username": "tj", "password": PASSWORD}, headers=H)
+        p = scan(c, "4000000000001").json()
+    assert (p["lookup"], p["name"]) == ("disabled", "4000000000001")
+    assert fake_off.calls == []
+
+
 # ---- database --------------------------------------------------------------
 
 
