@@ -839,6 +839,25 @@ input[type="date"] {
   padding-right: var(--space-14);
 }
 
+/* Flatter than on the Scan view, so the list stays in sight while scanning. */
+.shop-scan .viewfinder {
+  aspect-ratio: 2 / 1;
+}
+
+.shop-scan-note {
+  padding: var(--space-12) var(--space-14);
+  border: var(--stroke-hairline) solid var(--border-structural);
+  background: var(--paper-bright);
+}
+
+.shop-scan-note p {
+  margin: 0;
+}
+
+.shop-scan-note .row {
+  margin-top: var(--space-12);
+}
+
 .shop-suggestions,
 .shop-items {
   list-style: none;

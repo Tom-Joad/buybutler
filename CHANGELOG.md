@@ -4,6 +4,17 @@ All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
 need action when upgrading; the entry says so.
 
+## [0.12.0] - 2026-10-21
+
+### Added
+- **Scan into the shopping list** (#23): **Scan barcodes** on the shopping
+  list keeps the camera open for one product after the other. A product of
+  the list goes on at once ("Don't buy again" asks first); one that is on
+  the list already offers **Tick off** and **Raise quantity**; an unknown
+  barcode opens the form for a new product, which goes on the shopping list
+  once saved, and the camera comes back. Works without reception through the
+  outbox, like adding by name.
+
 ## [0.11.0] - 2026-10-20
 
 **Needs action when upgrading** only for scripts that call the user
@@ -157,6 +168,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[0.12.0]: https://github.com/Tom-Joad/buybutler/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Tom-Joad/buybutler/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Tom-Joad/buybutler/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Tom-Joad/buybutler/compare/v0.8.0...v0.9.0

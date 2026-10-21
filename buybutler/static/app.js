@@ -26,6 +26,8 @@ const state = {
   lists: null, // the user's lists with their role; null until loaded
   listId: null, // the list everything happens in (sent as a header)
   sentProducts: {}, // outbox job id -> product id, once its product was created
+  shopScanning: false, // the shopping list's camera was on; it comes back after the product form
+  shopAdd: null, // barcode of a new product that goes on the shopping list once saved
 };
 
 // ---- API ----------------------------------------------------------------
@@ -240,6 +242,7 @@ function uid() {
 // IndexedDB first, then sent. When the network fails, the job stays on the
 // phone and is sent later, in order. A step's path can name an earlier
 // step ("/api/products/{product}/ratings"); its ID is filled in once known.
+// A body field can name one the same way (`fill: { product_id: "product" }`).
 
 // One database: "jobs" (the outbox), "known" (the offline copy of rated
 // products) and "shopping" (the last shopping list seen), one record per list.
@@ -288,19 +291,25 @@ function newJob(label, steps) {
   return { id: uid(), label, created: new Date().toISOString(), steps: steps.filter(Boolean), error: null };
 }
 
+function stepId(ref, job) {
+  const step = job.steps.find((s) => s.ref === ref);
+  if (!step || !step.done) throw new Error(`step ${ref} not sent yet`);
+  return step.id;
+}
+
 function fillPath(path, job) {
-  return path.replace(/\{(\w+)\}/g, (_, ref) => {
-    const step = job.steps.find((s) => s.ref === ref);
-    if (!step || !step.done) throw new Error(`step ${ref} not sent yet`);
-    return String(step.id);
-  });
+  return path.replace(/\{(\w+)\}/g, (_, ref) => String(stepId(ref, job)));
 }
 
 async function runJob(job, retries) {
   for (const step of job.steps) {
     if (step.done) continue;
     const path = fillPath(step.path, job);
-    const body = step.file ? new Blob([step.file.bytes], { type: step.file.type }) : step.body;
+    let body = step.file ? new Blob([step.file.bytes], { type: step.file.type }) : step.body;
+    if (step.fill) {
+      body = { ...body };
+      for (const [field, ref] of Object.entries(step.fill)) body[field] = stepId(ref, job);
+    }
     let data;
     try {
       data = await api(step.method, path, body, { retries, list: step.list });
@@ -554,7 +563,13 @@ async function route() {
   const params = new URLSearchParams(query || "");
   const parts = path.split("/").filter(Boolean);
 
-  if (parts[0] !== "scan") stopCamera();
+  if (parts[0] !== "scan" && parts[0] !== "shop") stopCamera();
+  // The shopping list's camera comes back after the form for a new product,
+  // not after a visit anywhere else.
+  if (parts[0] !== "shop" && parts[0] !== "new") {
+    state.shopScanning = false;
+    state.shopAdd = null;
+  }
   // A product saved offline waits for its rating only while that form is open.
   if (parts[0] !== "pending") state.holdJob = null;
 
@@ -1157,6 +1172,7 @@ const shop = {
   inFlight: 0, // changes being sent; a fetch meanwhile could be older
   dragging: false,
   editing: null, // the item whose edit form is open
+  noteItem: null, // the item a scan found open on the list ("Tick off", "Raise quantity")
   local: [], // jobs made here that may not be in the outbox yet
 };
 let shopChain = Promise.resolve();
@@ -1223,12 +1239,17 @@ function shopItems() {
   return items;
 }
 
+// The list as shown: the server's, with the changes still on the phone.
+async function currentShopItems(store) {
+  const stored = await Outbox.all().catch(() => []);
+  const jobs = [...stored, ...shop.local.filter((j) => !stored.some((x) => x.id === j.id))];
+  return overlay(shopItems(), jobs, store);
+}
+
 async function renderShop() {
   if (!shop.data) return;
   const store = shopStore();
-  const stored = await Outbox.all().catch(() => []);
-  const jobs = [...stored, ...shop.local.filter((j) => !stored.some((x) => x.id === j.id))];
-  const items = overlay(shopItems(), jobs, store);
+  const items = await currentShopItems(store);
   const editable = canEdit();
 
   const select = $("#shop-store");
@@ -1247,6 +1268,7 @@ async function renderShop() {
   const done = items.filter((i) => i.checked).sort((a, b) => (b.checked_at || "").localeCompare(a.checked_at || ""));
 
   $("#shop-add").hidden = !editable;
+  $("#shop-scan").hidden = !editable;
   $("#shop-open").replaceChildren(...here.map((i) => shopRow(i, editable, true)));
   $("#shop-empty").hidden = here.length > 0;
   $("#shop-hint").hidden = !editable || here.length < 2 || here.some((i) => i.position !== null);
@@ -1356,21 +1378,36 @@ function shopSend(label, step) {
   renderShop();
 }
 
-function addToShopping({ product, text, quantity = "" }) {
-  const clientId = uid();
+// The item as the shopping list shows it until the server has it. A product
+// that is still waiting in the outbox has no ID yet.
+function shopItemLocal(clientId, { product, text, quantity = "" }) {
   const now = new Date().toISOString();
-  const body = { client_id: clientId, quantity };
-  if (product) body.product_id = product.id;
-  else body.text = text;
-  const local = {
-    id: clientId, product_id: product ? product.id : null, name: product ? product.name : text, text: product ? "" : text,
+  return {
+    id: clientId, product_id: product ? product.id || null : null, name: product ? product.name : text, text: product ? "" : text,
     brand: product ? product.brand || "" : "", category: product ? product.category || "" : "", image: null,
     verdict: product && product.rating ? product.rating.buy_again : null, reason: product && product.rating ? product.rating.reason : "",
     quantity, store: "", checked: false, checked_at: null, checked_by: null, added_by: state.user.username,
-    key: product ? `p:${product.id}` : `t:${text.trim().replace(/\s+/g, " ").toLowerCase()}`, position: null,
+    key: product ? `p:${product.id || clientId}` : `t:${text.trim().replace(/\s+/g, " ").toLowerCase()}`, position: null,
     created_at: now, updated_at: now,
   };
+}
+
+function addToShopping({ product, text, quantity = "" }) {
+  const clientId = uid();
+  const body = { client_id: clientId, quantity };
+  if (product) body.product_id = product.id;
+  else body.text = text;
+  const local = shopItemLocal(clientId, { product, text, quantity });
   shopSend(`Shopping: ${local.name}`, { method: "POST", path: "/api/shopping", body, local });
+}
+
+// "2x" becomes "3x"; anything else that isn't a count gets one in front.
+function raiseQuantity(quantity) {
+  const q = (quantity || "").trim();
+  if (!q) return "2x";
+  const m = q.match(/^(\d+)\s*[x×]\s*(.*)$/i) || q.match(/^(\d+)()$/);
+  const raised = m ? `${Number(m[1]) + 1}x${m[2] ? ` ${m[2]}` : ""}` : `2x ${q}`;
+  return raised.slice(0, 20); // the field's limit
 }
 
 // A product marked "don't buy again" asks first, with the reason.
@@ -1381,10 +1418,16 @@ function shoppingOk(product) {
 }
 
 async function showShop() {
+  if (camera && camera.target !== SCANNERS.shop) stopCamera();
   show("view-shop", "shop");
   showInfo($("#shop-message"), "");
   takeFlash($("#shop-message"));
+  shopNote("");
   shop.editing = null;
+  const start = $("#shop-scan-start");
+  const usable = navigator.mediaDevices && window.isSecureContext && scannerReady();
+  start.disabled = !usable;
+  start.textContent = usable ? "Scan barcodes" : window.isSecureContext ? "Scanner not available" : "Scanning needs HTTPS";
   await loadFacets();
   if (shop.data && shop.data.list_id === state.listId) renderShop();
   else shop.data = null;
@@ -1393,7 +1436,10 @@ async function showShop() {
   } catch (err) {
     if (!err.offline) throw err;
     showError($("#shop-message"), new Error("No connection, and this list's shopping list was never opened on this phone."));
+    return;
   }
+  // Back from the form for a new product: keep scanning.
+  if (state.shopScanning && usable && canEdit() && !$("#view-shop").hidden) startCamera(SCANNERS.shop);
 }
 
 // Live while open: another phone's ticks show within seconds.
@@ -1526,6 +1572,83 @@ $("#shop-add").addEventListener("submit", async (ev) => {
   addToShopping(exact ? { product: exact, quantity: form.quantity.value.trim() } : { text: q, quantity: form.quantity.value.trim() });
   form.reset();
   $("#shop-suggestions").hidden = true;
+});
+
+// ---- Scanning into the shopping list ------------------------------------
+//
+// The camera stays on: a known product goes on the list at once, one that
+// is open on the list already offers "Tick off" and "Raise quantity", and an
+// unknown barcode opens the form for a new product, which then goes on the
+// list too (state.shopAdd).
+
+function shopNote(text, item = null) {
+  shop.noteItem = item;
+  $("#shop-scan-note").hidden = !text;
+  $("#shop-scan-text").textContent = text;
+  $("#shop-scan-actions").hidden = !item;
+}
+
+async function shopScanned(code) {
+  let product = await Known.byBarcode(code);
+  if (!product) {
+    shopNote(`Looking up ${code}`);
+    try {
+      const r = await api("GET", `/api/lookup?barcode=${encodeURIComponent(code)}`, undefined,
+        state.offline ? { retries: 0 } : {});
+      product = r.product;
+      if (!product) state.suggestion = r.suggestion ? { ...r.suggestion, lookup: r.lookup } : { barcode: code, lookup: r.lookup };
+    } catch (err) {
+      if (!err.offline) {
+        shopNote("");
+        showError($("#shop-message"), err);
+        return;
+      }
+      // Not in the copy on this phone: not rated yet in this list, or never seen.
+      state.suggestion = { barcode: code, lookup: "offline" };
+    }
+  }
+  if (!camera || camera.target !== SCANNERS.shop) return; // stopped meanwhile
+  if (!product) {
+    state.shopAdd = code;
+    go(`#/new?barcode=${encodeURIComponent(code)}`);
+    return;
+  }
+  const open = (await currentShopItems(shopStore())).find((i) => !i.checked && i.product_id === product.id);
+  if (open) {
+    shopNote(`${product.name} is on the list already${open.quantity ? ` (${open.quantity})` : ""}.`, open);
+    return;
+  }
+  if (!shoppingOk(product)) {
+    shopNote(`${product.name} was not added.`);
+    return;
+  }
+  addToShopping({ product });
+  shopNote(`${product.name} added.`);
+}
+
+$("#shop-scan-start").addEventListener("click", () => {
+  showInfo($("#shop-message"), "");
+  state.shopScanning = true;
+  startCamera(SCANNERS.shop);
+});
+$("#shop-scan-stop").addEventListener("click", () => {
+  state.shopScanning = false;
+  stopCamera();
+  shopNote("");
+});
+$("#shop-scan-tick").addEventListener("click", () => {
+  const item = shop.noteItem;
+  if (!item) return;
+  shopChange(item, { checked: true }, `Tick: ${item.name}`);
+  shopNote(`${item.name} ticked off.`);
+});
+$("#shop-scan-more").addEventListener("click", () => {
+  const item = shop.noteItem;
+  if (!item) return;
+  item.quantity = raiseQuantity(item.quantity);
+  shopChange(item, { quantity: item.quantity }, `Change: ${item.name}`);
+  // Another tap raises it once more.
+  shopNote(`${item.name}: ${item.quantity}.`, item);
 });
 
 $("#p-shop").addEventListener("click", () => {
@@ -1762,7 +1885,26 @@ $("#logout").addEventListener("click", async () => {
 // ---- Scanner --------------------------------------------------------------
 
 const FORMATS = ["EAN13", "EAN8", "UPCA", "UPCE"];
-let camera = null; // { stream, timer }
+// One camera at a time, for the Scan view or the shopping list.
+let camera = null; // { stream, timer, busy, target, last: { code, at } }
+// The same barcode only counts again after this pause, so a product held
+// in front of the camera isn't added twice.
+const SAME_CODE_MS = 3000;
+
+const SCANNERS = {
+  scan: {
+    video: "#video", start: "#scan-start", stop: "#scan-stop", state: "#scan-state", msg: "#scan-message",
+    onHit: async (code) => {
+      stopCamera();
+      await lookup(code);
+    },
+  },
+  shop: {
+    video: "#shop-video", start: "#shop-scan-start", stop: "#shop-scan-stop", state: "#shop-scan-state",
+    msg: "#shop-message", frame: "#shop-viewfinder",
+    onHit: (code) => shopScanned(code),
+  },
+};
 
 function scannerReady() {
   if (!window.ZXingWASM) return false;
@@ -1777,6 +1919,7 @@ function scannerReady() {
 }
 
 function showScan() {
+  if (camera && camera.target !== SCANNERS.scan) stopCamera();
   show("view-scan", "scan");
   showInfo($("#scan-message"), "");
   takeFlash($("#scan-message"));
@@ -1790,14 +1933,14 @@ function showScan() {
     $("#scan-state").textContent = "Scanner not available";
   } else {
     $("#scan-start").disabled = false;
-    $("#scan-state").textContent = camera ? "Point at a barcode" : "Camera off";
+    $("#scan-state").textContent = camera && camera.target === SCANNERS.scan ? "Point at a barcode" : "Camera off";
   }
 }
 
-async function startCamera() {
-  if (camera) return;
-  const msg = $("#scan-message");
-  showInfo(msg, "");
+async function startCamera(target = SCANNERS.scan) {
+  if (camera && camera.target === target) return;
+  stopCamera();
+  const msg = $(target.msg);
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -1808,13 +1951,15 @@ async function startCamera() {
     showError(msg, new Error("No camera access. Allow it in the browser settings, or type the barcode."));
     return;
   }
-  const video = $("#video");
+  if (camera) stopCamera(); // a second tap while the first was waiting for access
+  const video = $(target.video);
+  if (target.frame) $(target.frame).hidden = false;
   video.srcObject = stream;
   await video.play().catch(() => {});
-  camera = { stream, busy: false, timer: null };
-  $("#scan-start").hidden = true;
-  $("#scan-stop").hidden = false;
-  $("#scan-state").textContent = "Point at a barcode";
+  camera = { stream, busy: false, timer: null, target, last: null };
+  $(target.start).hidden = true;
+  $(target.stop).hidden = false;
+  $(target.state).textContent = "Point at a barcode";
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -1837,9 +1982,13 @@ async function startCamera() {
       });
       const hit = results.find((r) => r.isValid && /^\d{8,14}$/.test(r.text));
       if (hit && camera) {
-        if (navigator.vibrate) navigator.vibrate(60);
-        stopCamera();
-        await lookup(hit.text);
+        const now = Date.now();
+        const again = camera.last && camera.last.code === hit.text && now - camera.last.at < SAME_CODE_MS;
+        camera.last = { code: hit.text, at: now };
+        if (!again) {
+          if (navigator.vibrate) navigator.vibrate(60);
+          await target.onHit(hit.text);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -1851,16 +2000,21 @@ async function startCamera() {
 
 function stopCamera() {
   if (!camera) return;
+  const { target } = camera;
   clearInterval(camera.timer);
   for (const t of camera.stream.getTracks()) t.stop();
   camera = null;
-  $("#video").srcObject = null;
-  $("#scan-start").hidden = false;
-  $("#scan-stop").hidden = true;
-  $("#scan-state").textContent = "Camera off";
+  $(target.video).srcObject = null;
+  if (target.frame) $(target.frame).hidden = true;
+  $(target.start).hidden = false;
+  $(target.stop).hidden = true;
+  $(target.state).textContent = "Camera off";
 }
 
-$("#scan-start").addEventListener("click", startCamera);
+$("#scan-start").addEventListener("click", () => {
+  showInfo($("#scan-message"), "");
+  startCamera(SCANNERS.scan);
+});
 $("#scan-stop").addEventListener("click", stopCamera);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) stopCamera();
@@ -2064,8 +2218,9 @@ async function showProductForm(id, barcode) {
   delete form.dataset.id;
   delete form.dataset.created;
   $("#pf-title").textContent = "New product";
-  $("#pf-submit").textContent = "Save and rate";
-  $("#pf-cancel").href = "#/scan";
+  const toShop = Boolean(barcode) && state.shopAdd === barcode;
+  $("#pf-submit").textContent = toShop ? "Save and add to shopping" : "Save and rate";
+  $("#pf-cancel").href = toShop ? "#/shop" : "#/scan";
   const s = state.suggestion && state.suggestion.barcode === barcode ? state.suggestion : null;
   form.barcode.value = barcode || "";
   if (s && s.lookup === "found") {
@@ -2097,6 +2252,7 @@ $("#product-form").addEventListener("submit", async (ev) => {
     barcode: form.barcode.value.trim() || null,
   };
   const file = form.image.files[0];
+  const toShop = !form.dataset.id && Boolean(body.barcode) && state.shopAdd === body.barcode;
   let job = null;
   try {
     if (form.dataset.id) {
@@ -2110,11 +2266,29 @@ $("#product-form").addEventListener("submit", async (ev) => {
     }
     body.use_suggested_image = !$("#pf-image-choice").hidden && form.use_suggested_image.checked;
     body.client_id = uid();
+    // Scanned on the shopping list: it goes on the list in the same job,
+    // before the picture, so a failed upload doesn't keep it off.
+    const shopId = toShop ? uid() : null;
     job = newJob(`New product: ${body.name}`, [
       // The list is fixed when the product is saved, not when it is sent.
       { ref: "product", method: "POST", path: "/api/products", body, list: state.listId },
+      toShop && {
+        ref: "shop", method: "POST", path: "/api/shopping", body: { client_id: shopId, quantity: "" },
+        fill: { product_id: "product" }, list: state.listId,
+        local: shopItemLocal(shopId, { product: { name: body.name, brand: body.brand, category: body.category } }),
+      },
       file && (await blobStep("image", "/api/products/{product}/image", await shrink(file))),
     ]);
+    if (toShop) {
+      showInfo(msg, "Saving");
+      const result = await submitJob(job);
+      state.shopAdd = null;
+      state.suggestion = null;
+      flash(result === "sent" ? `${body.name} is on the shopping list.`
+        : `No connection. ${body.name} and its place on the shopping list are saved on this phone and sent later.`);
+      go("#/shop");
+      return;
+    }
     showInfo(msg, "Saving");
     // Held from the start: if it ends up queued, its rating is added to the
     // same job before anything is sent.
@@ -2132,7 +2306,8 @@ $("#product-form").addEventListener("submit", async (ev) => {
     state.holdJob = null;
     if (err.partial) {
       flash(`The product was saved, but not the picture: ${err.message}`, true);
-      go(`#/product/${job.steps[0].id}/rate`);
+      if (toShop) state.shopAdd = null;
+      go(toShop ? "#/shop" : `#/product/${job.steps[0].id}/rate`);
       return;
     }
     showError(msg, err);
