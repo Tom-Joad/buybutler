@@ -1,6 +1,4 @@
 # Tests every push and builds the image only for v* tags and manual runs.
-# The image inherits the repository's visibility, so it is private here;
-# pulling it needs a token with read:packages.
 
 name: Build and push image
 

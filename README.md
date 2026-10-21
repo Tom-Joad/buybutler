@@ -61,9 +61,7 @@ other arm64 machines with a 64-bit system included).
 | `dev` | Test build from a branch, made by a manual run; not for regular use |
 
 Images are built by GitHub Actions for every version tag, published to
-`ghcr.io` and signed keylessly with Sigstore. The image inherits the
-repository's visibility, so it is private: pulling it needs a token with
-`read:packages` (`docker login ghcr.io`).
+`ghcr.io` and signed keylessly with Sigstore.
 
 ## Usage
 
@@ -95,7 +93,8 @@ docker exec -it buybutler buybutler user add <NAME>
 
 ### Unraid
 
-A template and its own guide: [`unraid/README-UNRAID.md`](unraid/README-UNRAID.md).
+In Community Applications: search for **Buybutler** under **Apps**. More,
+including the reverse proxy and backups: [`unraid/README-UNRAID.md`](unraid/README-UNRAID.md).
 
 ### First start
 
