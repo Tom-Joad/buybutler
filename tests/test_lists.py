@@ -299,3 +299,13 @@ def test_migration_turns_the_household_into_a_list(settings):
         c.execute("DELETE FROM users WHERE id = 2")
         assert c.execute("SELECT user_id FROM ratings").fetchone()[0] is None
         assert c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+
+
+def test_admin_setting_own_password_stays_logged_in(logged_in, settings, home):
+    me = next(u for u in logged_in.get("/api/users").json()["users"] if u["username"] == "tj")
+    other = login(logged_in.app, "tj")
+    r = logged_in.post(f"/api/users/{me['id']}/password", json={"password": "a brand new one", **ADMIN}, headers=H)
+    assert r.status_code == 204
+    # This session goes on with a new cookie; the other one ended.
+    assert logged_in.get("/api/session").status_code == 200
+    assert other.get("/api/session").status_code == 401

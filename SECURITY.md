@@ -19,7 +19,7 @@ photos, the stores it visits and when, the users' password hashes and
 their second factors (authenticator secrets, passkey public keys, hashed
 recovery codes). Of particular interest:
 
-- getting at data without a valid session, or at another household's data
+- getting at data without a valid session, or at a list one isn't a member of
 - session tokens or passwords ending up in logs, files or responses
 - getting past the second factor: a code accepted twice, a passkey of
   another user or another site, a login ticket used for something else

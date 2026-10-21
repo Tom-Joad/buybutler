@@ -45,6 +45,8 @@ class FakeOff:
             return httpx.Response(200, content=JPEG)
         if "/4000000000001" in request.url.path:
             return httpx.Response(200, json=OFF_PRODUCT)
+        if "/4000000000097" in request.url.path:
+            return httpx.Response(200, json=[])  # not the answer Open Food Facts gives
         return httpx.Response(404, json={"status": 0})
 
 
@@ -375,6 +377,7 @@ def test_lookup_suggestion_is_cached(logged_in, fake_off):
 
 def test_lookup_not_found_and_failure(logged_in, fake_off):
     assert logged_in.get("/api/lookup", params={"barcode": "4000000000099"}).json()["lookup"] == "not_found"
+    assert logged_in.get("/api/lookup", params={"barcode": "4000000000097"}).json()["lookup"] == "failed"
     fake_off.down = True
     assert logged_in.get("/api/lookup", params={"barcode": "4000000000098"}).json()["lookup"] == "failed"
     assert logged_in.get("/api/lookup", params={"barcode": "abc"}).status_code == 422

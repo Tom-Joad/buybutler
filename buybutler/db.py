@@ -1,8 +1,8 @@
 """SQLite storage: schema, migrations and the time stamps every row carries.
 
 Every row records `created_at` and, where it can change, `updated_at`, as
-UTC ISO 8601 with milliseconds. Households and users are in the schema from
-the start, so several users can be added later without moving data.
+UTC ISO 8601 with milliseconds. Users and lists were in the schema from the
+start (lists began as households), so sharing came without moving data.
 """
 
 from __future__ import annotations

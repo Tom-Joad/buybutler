@@ -100,10 +100,12 @@ USERS=$(awk '/python3 -m buybutler run/ && !/awk/ {print $1}' <<<"$PS")
 [[ $USERS != *root* ]] || fail "service runs as root: $USERS"
 [[ $PS != *"busybox crond"* ]] || fail "crond runs although the app needs no cron"
 
-PID=$(docker exec "$NAME" pgrep -f 'python3 -m buybutler run' | head -n1)
+# pgrep -o (the oldest): `pgrep | head -n1` fails at random under pipefail.
+PID=$(docker exec "$NAME" pgrep -o -f 'python3 -m buybutler run')
 ENVIRON=$(docker exec --user abc "$NAME" sh -c "tr '\\0' '\\n' </proc/$PID/environ")
 grep -qx 'HOME=/config' <<<"$ENVIRON" || fail "the service's HOME is not /config"
 [[ $(docker exec "$NAME" date +%Z) == CE*T ]] || fail "TZ not applied"
+in_log '"ts":"[0-9T:.-]+\+0[12]:00","level":"INFO","event":"starting"' || fail "log time not local with its offset"
 
 echo "== interface and API"
 R=$(http GET /); [[ $(status_of "$R") == 200 ]] || fail "/ returned $(status_of "$R")"

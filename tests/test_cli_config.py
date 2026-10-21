@@ -135,3 +135,22 @@ def test_throttle_memory_is_bounded(monkeypatch):
     for n in range(1000):
         t.begin(f"user{n}", f"client{n}")
     assert len(t._attempts) <= 100
+
+
+def test_log_time_is_local_with_offset(monkeypatch):
+    import json
+    import logging
+    import time
+
+    from buybutler.logging_setup import JsonFormatter
+
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    time.tzset()
+    try:
+        record = logging.LogRecord("buybutler", logging.INFO, "", 0, "starting", None, None)
+        record.created = 1767225600.0  # 2026-01-01 00:00 UTC
+        line = json.loads(JsonFormatter().format(record))
+        assert line["ts"] == "2026-01-01T01:00:00.000+01:00"
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()

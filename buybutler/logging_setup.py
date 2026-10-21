@@ -19,7 +19,10 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload = {
+            # Local time with its offset (the container's TZ), so the log
+            # matches the clock on the wall; UTC prints as Z.
             "ts": datetime.fromtimestamp(record.created, timezone.utc)
+            .astimezone()
             .isoformat(timespec="milliseconds")
             .replace("+00:00", "Z"),
             "level": record.levelname,
