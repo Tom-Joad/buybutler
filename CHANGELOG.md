@@ -1,8 +1,32 @@
 # Changelog
 
 All notable changes to this project are listed here. Versions follow
-[semantic versioning](https://semver.org/). Before 1.0.0, a minor version may
-need action when upgrading; the entry says so.
+[semantic versioning](https://semver.org/). From 1.0.0 on, a change that
+needs action when upgrading (a renamed or removed setting, a changed API for
+scripts, a different folder layout) only comes with a new major version.
+Before 1.0.0, a minor version could need action; its entry says so.
+
+## [1.0.0] - Unreleased
+
+The first stable release. Nothing to do when upgrading from 0.13.0.
+
+### Added
+- **arm64 image** (#25): the same image runs on x86-64 and on arm64
+  machines such as a Raspberry Pi 4 or 5 with a 64-bit system.
+
+### Changed
+- The log shows the local time with its offset (`TZ`) instead of UTC.
+- Every Python package in the image is pinned, also the ones pulled in by
+  other packages, so each build installs the same versions.
+
+### Fixed
+- Entries waiting on a phone belong to the user who made them: when someone
+  else logs in on the same phone, they are neither shown nor sent with that
+  user's login, and go out once their user is back.
+- An admin who sets their own password under **Account → Users** stays
+  logged in on this device, as with **Change password**.
+- An unexpected answer from Open Food Facts counts as a failed lookup
+  instead of an error page.
 
 ## [0.13.0] - 2026-10-21
 
@@ -180,6 +204,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.0.0]: https://github.com/Tom-Joad/buybutler/compare/v0.13.0...v1.0.0
 [0.13.0]: https://github.com/Tom-Joad/buybutler/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/Tom-Joad/buybutler/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Tom-Joad/buybutler/compare/v0.10.0...v0.11.0

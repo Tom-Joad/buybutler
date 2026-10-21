@@ -1,7 +1,9 @@
 # The barcode decoder and the QR encoder for the browser come from npm. This
 # stage only copies their files; Node itself doesn't reach the final image.
+# The files are the same for every architecture, so the stage runs once, on
+# the build machine's own platform, instead of under emulation for arm64.
 # Pinned by digest (a multi-arch index); Dependabot proposes new digests.
-FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS vendor
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS vendor
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund

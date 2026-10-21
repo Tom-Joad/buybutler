@@ -48,14 +48,15 @@ never delete it.**
 | Architecture | Available |
 | :---: | :---: |
 | x86-64 | ✅ |
-| arm64 | ❌ |
+| arm64 | ✅ |
 
-Only x86-64 is built for now.
+One image for both: Docker picks the right one (Raspberry Pi 4 and 5 and
+other arm64 machines with a 64-bit system included).
 
 | Tag | Meaning |
 |---|---|
 | `latest` | The latest release |
-| `0.10.0`, `0.10` | A specific release / the latest patch of a minor version |
+| `1.0.0`, `1.0` | A specific release / the latest patch of a minor version |
 | `sha-<commit>` | A specific build |
 | `dev` | Test build from a branch, made by a manual run; not for regular use |
 
@@ -360,6 +361,7 @@ check calls `http://127.0.0.1:8080/health`.
 | No offline start | The app was only opened over plain HTTP, or never opened online since the update; open it once over HTTPS |
 | "A new version is ready" | Buybutler was updated on the server; **Reload** switches to it |
 | Entries waiting on one phone | They live in that browser's storage; clearing the site data or a private tab drops them |
+| Entries gone after someone else logged in on the phone | They belong to the user who made them and wait for them; they go out when that user logs in again |
 
 Verify the signature:
 
@@ -397,12 +399,17 @@ works without it, except for the camera.
 
 | File | Content |
 |---|---|
-| `buybutler/app.py` | Routes: login, lookup, products, ratings, pictures |
+| `buybutler/app.py` | Routes: login, second factors, lists, users, lookup, products, ratings, prices, shopping list, pictures |
 | `buybutler/db.py` | Schema, migrations, time stamps, backup |
 | `buybutler/auth.py` | Password hashing, sessions, login throttle |
+| `buybutler/twofactor.py` | Authenticator app (TOTP), passkeys, recovery codes, login challenges |
+| `buybutler/lists.py` | Lists, members and the rules that keep them consistent |
+| `buybutler/prices.py` | Units, unit prices and the price summary |
+| `buybutler/shopping.py` | Shopping list and the remembered order per store |
 | `buybutler/off.py` | Open Food Facts client and cache |
 | `buybutler/images.py` | Stored pictures |
 | `buybutler/static/` | Interface without a build step, stylesheets, fonts, icons |
+| `buybutler/sw.js` | Service worker: the app shell and pictures for offline use |
 | `root/etc/s6-overlay/` | s6 services: settings check and migration, app as `abc`, start banner |
 | `root/usr/local/bin/buybutler` | The command for `docker exec` |
 | `tests/` | Unit tests and the image smoke test |

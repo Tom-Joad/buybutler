@@ -1097,7 +1097,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return users_json(conn)
 
     @app.post("/api/users/{user_id}/password", status_code=204)
-    def reset_password(user_id: int, body: PasswordSet, request: Request, user: CurrentUser, conn: Conn) -> None:
+    def reset_password(user_id: int, body: PasswordSet, request: Request, response: Response, user: CurrentUser,
+                       conn: Conn) -> None:
         admin_only(user)
         confirm_password(request, conn, user, body.admin_password)
         if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
@@ -1106,6 +1107,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             auth.set_password(conn, user_id, body.password)
         except auth.AuthError as exc:
             raise HTTPException(400, str(exc)) from None
+        if user_id == user.id:
+            # Every session of the user ended; this one continues with a new token.
+            set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
         log.info("password_reset", extra={"user_id": user_id})
 
     @app.post("/api/users/{user_id}/reset-2fa")
@@ -1749,7 +1753,7 @@ def run() -> None:
         settings = config.load()
     except config.ConfigError as exc:
         logging_setup.configure("INFO")
-        log.error("invalid_setting", extra={"detail": str(exc)})
+        log.error("config_invalid", extra={"error": str(exc)})
         raise SystemExit(1) from None
     logging_setup.configure(settings.log_level)
     log.info(

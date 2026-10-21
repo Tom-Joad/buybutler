@@ -274,8 +274,12 @@ const idb = (() => {
   };
 })();
 
+// A job belongs to the user who saved it. Another user logging in on the
+// same phone neither sees nor sends it; it waits until its user is back.
+const ownJob = (job) => !job.user || Boolean(state.user && job.user === state.user.username);
+
 const Outbox = {
-  all: () => idb("jobs", "readonly", (s) => s.getAll()),
+  all: async () => (await idb("jobs", "readonly", (s) => s.getAll())).filter(ownJob),
   get: (id) => idb("jobs", "readonly", (s) => s.get(id)),
   put: (job) => idb("jobs", "readwrite", (s) => s.put(job)),
   remove: (id) => idb("jobs", "readwrite", (s) => s.delete(id)),
@@ -288,7 +292,10 @@ async function blobStep(ref, path, blob) {
 }
 
 function newJob(label, steps) {
-  return { id: uid(), label, created: new Date().toISOString(), steps: steps.filter(Boolean), error: null };
+  return {
+    id: uid(), label, created: new Date().toISOString(), steps: steps.filter(Boolean), error: null,
+    user: state.user ? state.user.username : null,
+  };
 }
 
 function stepId(ref, job) {
@@ -891,8 +898,6 @@ $("#delete-list-form").addEventListener("submit", async (ev) => {
     showError($("#l1-message"), err);
   }
 });
-
-// ---- Login and account ----------------------------------------------------
 
 // ---- Passkeys (WebAuthn) ----------------------------------------------------
 //

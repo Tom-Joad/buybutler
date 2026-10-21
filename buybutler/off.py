@@ -150,7 +150,9 @@ class Client:
             return None
         response.raise_for_status()
         body = response.json()
-        product = body.get("product") if isinstance(body, dict) else None
+        if not isinstance(body, dict):
+            raise ValueError("unexpected answer from Open Food Facts")
+        product = body.get("product")
         if body.get("status") != 1 or not isinstance(product, dict):
             _store(conn, barcode, False, None)
             log.info("lookup_done", extra={"found": False})
