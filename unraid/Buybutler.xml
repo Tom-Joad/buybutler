@@ -8,7 +8,8 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/Tom-Joad/buybutler</Support>
   <Project>https://github.com/Tom-Joad/buybutler</Project>
-  <Icon>https://raw.githubusercontent.com/Tom-Joad/buybutler/main/unraid/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/Tom-Joad/unraid-templates/main/icons/buybutler.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/Tom-Joad/buybutler/main/unraid/Buybutler.xml</TemplateURL>
   <Overview>
     Remember which groceries to buy again and which not, with a reason, 1 to 5 stars, the store,
     the date, a photo and optionally the price paid. Scan the barcode with the phone camera; product names and pictures come
