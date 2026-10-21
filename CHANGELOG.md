@@ -6,7 +6,7 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-10-21
 
 The first stable release. Nothing to do when upgrading from 0.13.0.
 
