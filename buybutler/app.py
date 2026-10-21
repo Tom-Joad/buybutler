@@ -169,6 +169,19 @@ class PasskeyIn(PasskeyAnswer):
         return _text(v, twofactor.PASSKEY_NAME_MAX) or "Passkey"
 
 
+class ScanIn(BaseModel):
+    client_id: ClientId = None
+    barcode: str
+
+    @field_validator("barcode")
+    @classmethod
+    def _barcode(cls, v: str) -> str:
+        v = v.strip()
+        if not off.valid_barcode(v):
+            raise ValueError("a barcode has 8 to 14 digits")
+        return v
+
+
 class ProductIn(BaseModel):
     client_id: ClientId = None
     barcode: str | None = None
@@ -1308,6 +1321,71 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             # Runs after the response, and after this request's commit.
             tasks.add_task(attach_suggested_image, product_id, image_url)
         return _product_json(conn, _load_product(conn, user, product_id))
+
+    @app.post("/api/products/scan", status_code=201)
+    def scan_product(body: ScanIn, user: CurrentUser, current: CurrentList, conn: Conn,
+                     tasks: BackgroundTasks, response: Response) -> dict:
+        """Add a product from its barcode alone, for adding many in a row.
+
+        The phone sends this from its outbox and goes on scanning, so the
+        Open Food Facts lookup happens here, before anything is written. A
+        barcode the list has already returns that product ("known"); one Open
+        Food Facts doesn't know is saved with the barcode as its name
+        ("lookup": "not_found"), to be named later.
+        """
+        existing = _replayed(conn, user, "products", body.client_id)
+        if existing is not None:
+            response.status_code = 200
+            return {**_product_json(conn, _load_product(conn, user, existing)), "scan": "added", "lookup": "replayed"}
+        list_id, role = current
+        _check_write(role)
+        row = conn.execute(
+            "SELECT id FROM products WHERE list_id = ? AND barcode = ?", (list_id, body.barcode)
+        ).fetchone()
+        if row is not None:
+            response.status_code = 200
+            return {**_product_json(conn, _load_product(conn, user, row["id"])), "scan": "known", "lookup": "known"}
+        suggestion = None
+        lookup = "disabled"
+        if settings.off_lookup:
+            try:
+                suggestion = lookup_client.lookup(conn, body.barcode)
+                lookup = "found" if suggestion else "not_found"
+            except (httpx.HTTPError, ValueError):
+                log.warning("lookup_failed", exc_info=True)
+                lookup = "failed"
+        # Open Food Facts data is cut to the field lengths, not refused.
+        def clip(field: str, limit: int) -> str:
+            return (getattr(suggestion, field) or "").strip()[:limit] if suggestion else ""
+
+        name = clip("name", 200)
+        stamp = db.now()
+        try:
+            product_id = conn.execute(
+                "INSERT INTO products (list_id, barcode, name, brand, category, quantity, image, source,"
+                " created_by, created_at, updated_at, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (list_id, body.barcode, name or body.barcode, clip("brand", 200), clip("category", 100),
+                 clip("quantity", 50), None, "openfoodfacts" if suggestion else "manual", user.id, stamp, stamp, body.client_id),
+            ).lastrowid
+        except sqlite3.IntegrityError:
+            # The same request ran twice at once, or another phone added the
+            # barcode meanwhile.
+            existing = _after_conflict(conn, user, "products", body.client_id)
+            response.status_code = 200
+            if existing is not None:
+                return {**_product_json(conn, _load_product(conn, user, existing)), "scan": "added", "lookup": "replayed"}
+            row = conn.execute(
+                "SELECT id FROM products WHERE list_id = ? AND barcode = ?", (list_id, body.barcode)
+            ).fetchone()
+            if row is None:
+                raise
+            return {**_product_json(conn, _load_product(conn, user, row["id"])), "scan": "known", "lookup": "known"}
+        log.info("product_created", extra={"product_id": product_id, "source": "scan", "lookup": lookup})
+        if suggestion and suggestion.image_url:
+            tasks.add_task(attach_suggested_image, product_id, suggestion.image_url)
+        if not name and lookup == "found":
+            lookup = "not_found"  # known to Open Food Facts, but without a name
+        return {**_product_json(conn, _load_product(conn, user, product_id)), "scan": "added", "lookup": lookup}
 
     @app.get("/api/products/{product_id}")
     def get_product(product_id: int, user: CurrentUser, conn: Conn) -> dict:

@@ -13,7 +13,7 @@ body:
     attributes:
       label: Version
       description: The `version` field of the `starting` line in the container log.
-      placeholder: "0.12.0"
+      placeholder: "0.13.0"
     validations:
       required: true
   - type: textarea

@@ -495,6 +495,21 @@ input[type="date"] {
   text-transform: uppercase;
 }
 
+.bulk-items li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-6) var(--space-10);
+}
+
+.bulk-items .name {
+  font-weight: 700;
+}
+
+.bulk-items a {
+  margin-left: auto;
+}
+
 /* ---- Product ------------------------------------------------------------ */
 
 .verdict {

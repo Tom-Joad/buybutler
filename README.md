@@ -7,6 +7,11 @@ reason, the store and the date. Unknown products are filled in from
 [Open Food Facts](https://world.openfoodfacts.org/). Products without a
 barcode (bakery, market) are added by hand.
 
+To start, or after a big shopping trip, **Add many** on the Scan view takes
+one barcode after the other: confirm each with OK and go on scanning, while
+Open Food Facts is asked in the background. The products are saved unrated,
+to be rated later.
+
 Optionally, note what you paid: the price, the quantity it was for
 (`500 g`, `1.5 l`, `6 piece`) and whether it was an offer. Each product
 keeps its price history with the price per kg, litre or piece, and the
@@ -212,6 +217,24 @@ them in. Changes here ask for the current password.
 
 Turning two-factor login on ends the user's other sessions. Wrong codes
 count towards the same lockout as wrong passwords.
+
+## Adding many products
+
+Switch on **Add many** under the camera on the Scan view. Every barcode then
+shows a card, **OK** or **Skip**; after OK the camera is ready for the next
+product at once. The server asks Open Food Facts for name, brand, category
+and picture and saves the product unrated; the round's list below the camera
+fills in as the answers come back:
+
+- **added**, with **Rate →** to rate it now (or later, from Products);
+- **added, no name found**: Open Food Facts doesn't know the barcode, so the
+  product carries the barcode as its name; **Name it →** opens its form;
+- **in the list already**: nothing is added twice;
+- **sent when the connection is back**: without reception the products wait
+  on the phone, like everything else.
+
+Typing a barcode in **Or type the barcode** works the same while **Add many**
+is on.
 
 ## Shopping list
 

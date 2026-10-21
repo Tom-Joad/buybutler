@@ -93,6 +93,19 @@
       <button class="btn btn--primary" id="scan-start" type="button">Start camera</button>
       <button class="btn btn--outline" id="scan-stop" type="button" hidden>Stop camera</button>
     </div>
+    <label class="check" id="bulk-switch" hidden>
+      <input type="checkbox" id="bulk-on">
+      <span>Add many: confirm each with OK and go on scanning</span>
+    </label>
+    <div class="shop-scan-note" id="bulk-card" role="status" hidden>
+      <p id="bulk-card-text"></p>
+      <div class="row">
+        <button class="btn btn--primary" id="bulk-ok" type="button">OK</button>
+        <button class="btn btn--outline" id="bulk-skip" type="button">Skip</button>
+      </div>
+    </div>
+    <h2 class="section-title" id="bulk-title" hidden>Added in this round</h2>
+    <ul class="history bulk-items" id="bulk-items" hidden></ul>
     <form id="manual-form" class="inline-form">
       <label class="field">
         <span class="label">Or type the barcode</span>

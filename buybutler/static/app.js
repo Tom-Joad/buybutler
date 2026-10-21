@@ -327,6 +327,7 @@ async function runJob(job, retries) {
     }
     step.done = true;
     step.id = data && data.id;
+    if (step.keep) step.data = data; // the caller reads the answer, not only the ID
     step.file = null;
     if (step.ref === "product") state.sentProducts[job.id] = step.id;
     await Outbox.put(job).catch(() => {});
@@ -1895,6 +1896,7 @@ const SCANNERS = {
   scan: {
     video: "#video", start: "#scan-start", stop: "#scan-stop", state: "#scan-state", msg: "#scan-message",
     onHit: async (code) => {
+      if (bulkOn()) return bulkScanned(code);
       stopCamera();
       await lookup(code);
     },
@@ -1925,6 +1927,9 @@ function showScan() {
   takeFlash($("#scan-message"));
   $("#add-by-hand").hidden = !canEdit();
   $("#manual-form").reset();
+  $("#bulk-switch").hidden = !canEdit();
+  bulk.pending = null;
+  renderBulk();
   if (!navigator.mediaDevices || !window.isSecureContext) {
     $("#scan-start").disabled = true;
     $("#scan-state").textContent = "Camera needs HTTPS";
@@ -2022,7 +2027,111 @@ document.addEventListener("visibilitychange", () => {
 
 $("#manual-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  await lookup(ev.currentTarget.barcode.value.trim());
+  const code = ev.currentTarget.barcode.value.trim();
+  if (bulkOn()) {
+    ev.currentTarget.reset();
+    await bulkScanned(code);
+    return;
+  }
+  await lookup(code);
+});
+
+// ---- Adding many ------------------------------------------------------------
+//
+// With "Add many" on, every barcode shows a card: OK sends it from the
+// outbox to /api/products/scan, which looks it up in Open Food Facts and
+// saves the product unrated, while the camera goes on to the next one.
+// The round's results are listed below, with links to rate or name them.
+
+const bulk = {
+  pending: null, // the barcode waiting for OK or Skip
+  items: [], // { code, name, status, productId }, newest first
+};
+let bulkChain = Promise.resolve();
+
+const bulkOn = () => $("#bulk-on").checked && canEdit();
+
+async function bulkScanned(code) {
+  if (bulk.pending) return; // one card at a time
+  const seen = bulk.items.find((i) => i.code === code);
+  if (seen) {
+    showInfo($("#scan-message"), `${seen.name || code} is in this round already.`);
+    return;
+  }
+  showInfo($("#scan-message"), "");
+  const known = await Known.byBarcode(code);
+  if (known) {
+    bulk.items.unshift({ code, name: known.name, status: "known", productId: known.id });
+    renderBulk();
+    return;
+  }
+  bulk.pending = code;
+  renderBulk();
+}
+
+function bulkSend(code) {
+  const clientId = uid();
+  const job = newJob(`Add: ${code}`, [{
+    ref: "product", method: "POST", path: "/api/products/scan", body: { client_id: clientId, barcode: code },
+    list: state.listId, keep: true,
+  }]);
+  const item = { code, name: "", status: "sending", productId: null };
+  bulk.items.unshift(item);
+  renderBulk();
+  // One after the other: the server looks each up in Open Food Facts.
+  bulkChain = bulkChain.then(async () => {
+    try {
+      if ((await submitJob(job)) === "queued") {
+        item.status = "queued";
+      } else {
+        const data = job.steps[0].data;
+        item.productId = data.id;
+        item.name = data.name;
+        item.status = data.scan === "known" ? "known" : data.name === code ? "unnamed" : "added";
+      }
+    } catch (err) {
+      item.status = "failed";
+      item.error = err.message;
+    }
+    renderBulk();
+  });
+}
+
+function renderBulk() {
+  const card = $("#bulk-card");
+  card.hidden = !bulk.pending;
+  if (bulk.pending) $("#bulk-card-text").textContent = `Barcode ${bulk.pending}: add it?`;
+  const note = {
+    sending: "looking up",
+    added: "added",
+    unnamed: "added, no name found",
+    known: "in the list already",
+    queued: "sent when the connection is back",
+    failed: "not added",
+  };
+  const link = (item) => {
+    if (!item.productId) return null;
+    if (item.status === "unnamed") return el("a", { class: "ghost", href: `#/product/${item.productId}/edit`, text: "Name it →" });
+    if (item.status === "added") return el("a", { class: "ghost", href: `#/product/${item.productId}/rate`, text: "Rate →" });
+    return el("a", { class: "ghost", href: `#/product/${item.productId}`, text: "Open →" });
+  };
+  $("#bulk-title").hidden = bulk.items.length === 0;
+  $("#bulk-items").hidden = bulk.items.length === 0;
+  $("#bulk-items").replaceChildren(...bulk.items.map((item) => el("li", {},
+    el("span", { class: "name", text: item.name || item.code }),
+    el("span", { class: "meta", text: item.error ? `${note[item.status]}: ${item.error}` : note[item.status] }),
+    link(item))));
+}
+
+$("#bulk-ok").addEventListener("click", () => {
+  const code = bulk.pending;
+  bulk.pending = null;
+  if (code) bulkSend(code);
+  else renderBulk();
+});
+$("#bulk-skip").addEventListener("click", () => {
+  bulk.pending = null;
+  renderBulk();
 });
 
 async function lookup(barcode) {
