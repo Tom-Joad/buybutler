@@ -14,8 +14,8 @@ lowest and highest regular price.
 
 Every entry keeps the time it was made and last changed.
 
-A shared shopping list per list: tap products together (or type anything
-else), tick them off in the shop, in the order you walk through it.
+A shared shopping list per list: tap or scan products together (or type
+anything else), tick them off in the shop, in the order you walk through it.
 
 Optional two-factor login per user: a code from an authenticator app, or a
 passkey (fingerprint or face unlock on the phone, no password typed in the
@@ -222,6 +222,14 @@ count towards the same lockout as wrong passwords.
   shows the reason. Anything else ("bread rolls") goes on as text. A
   quantity ("2x") is optional. On a product page, **Add to shopping** puts
   it on the list; a product is never on it twice.
+- **Scan:** **Scan barcodes** opens the camera on the shopping list and
+  keeps it open, so you can go through the cupboard product by product.
+  A product of the list goes on at once ("Don't buy again" asks first). One
+  that is on the list already offers **Tick off** and **Raise quantity**
+  ("2x", "3x" …). An unknown barcode opens the form for a new product, filled
+  in from Open Food Facts; once saved, it is on the shopping list and the
+  camera comes back. The same barcode only counts again after it was out of
+  sight for three seconds.
 - **In the shop:** tap an item to tick it off; it moves to **In the
   basket**, with a **Price** link for products. **Clear ticked** removes the
   ticked items. **Edit** changes the quantity, the text, or ties an item to

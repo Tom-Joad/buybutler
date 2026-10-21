@@ -385,9 +385,25 @@
       </div>
       <ul class="shop-suggestions" id="shop-suggestions" hidden></ul>
     </form>
+    <div class="shop-scan stack" id="shop-scan" hidden>
+      <div class="viewfinder" id="shop-viewfinder" hidden>
+        <video id="shop-video" playsinline muted></video>
+        <div class="aim" aria-hidden="true"></div>
+        <p class="viewfinder-text" id="shop-scan-state">Camera off</p>
+      </div>
+      <div class="shop-scan-note" id="shop-scan-note" role="status" hidden>
+        <p id="shop-scan-text"></p>
+        <div class="row" id="shop-scan-actions" hidden>
+          <button class="btn btn--secondary" id="shop-scan-tick" type="button">Tick off</button>
+          <button class="btn btn--outline" id="shop-scan-more" type="button">Raise quantity</button>
+        </div>
+      </div>
+      <button class="btn btn--secondary" id="shop-scan-start" type="button">Scan barcodes</button>
+      <button class="btn btn--outline" id="shop-scan-stop" type="button" hidden>Stop camera</button>
+    </div>
     <p class="message" id="shop-message" role="alert"></p>
     <ul class="shop-items" id="shop-open"></ul>
-    <p class="meta" id="shop-empty" hidden>Nothing to buy. Add products here, or with "Add to shopping" on a product.</p>
+    <p class="meta" id="shop-empty" hidden>Nothing to buy. Add products here, by scanning their barcodes, or with "Add to shopping" on a product.</p>
     <p class="meta" id="shop-hint" hidden>Drag ≡ to put the items in the order you walk through the store; Buybutler remembers it for next time.</p>
     <details class="shop-others" id="shop-others" hidden>
       <summary id="shop-others-title"></summary>

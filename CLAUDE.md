@@ -51,7 +51,9 @@ item an ID, so a tick made offline can name an item the server hasn't seen
 yet; shopping changes are sent in order (`shopSend`). Ticking a ticked
 item keeps the first tick. `store_order` remembers positions per item key
 (`p:<product>`, `t:<text>`) and store; `shopping.set_order` keeps the
-places of keys not shown.
+places of keys not shown. A new product scanned on the shopping list goes
+on it in the same outbox job (`fill: { product_id: "product" }` names the
+product step's ID in the body), so it also works offline.
 
 ## Conventions
 
