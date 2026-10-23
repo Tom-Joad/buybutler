@@ -1,5 +1,5 @@
 # What Buybutler uses directly.
-fastapi==0.143.3
+fastapi==0.151.0
 httpx==0.28.1
 uvicorn==0.54.0
 webauthn==3.0.1
