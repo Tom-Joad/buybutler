@@ -6,6 +6,14 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [1.0.2] - 2026-10-23
+
+### Changed
+- Updated dependencies:
+  - linuxserver/baseimage-alpine from `b661ece` to `7a59ee7`
+  - fastapi from 0.143.3 to 0.151.0
+  - zxing-wasm from 3.1.5 to 3.1.6
+
 ## [1.0.1] - 2026-10-22
 
 ### Security
@@ -210,6 +218,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.0.2]: https://github.com/Tom-Joad/buybutler/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Tom-Joad/buybutler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Tom-Joad/buybutler/compare/v0.13.0...v1.0.0
 [0.13.0]: https://github.com/Tom-Joad/buybutler/compare/v0.12.0...v0.13.0
