@@ -6,6 +6,13 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [1.0.3] - 2026-10-26
+
+### Security
+- Security updates of the distribution packages, picked up by rebuilding the image:
+  - `curl` 8.23.0-r0 (CVE-2026-92392)
+  - `libcurl` 8.23.0-r0 (CVE-2026-92392)
+
 ## [1.0.2] - 2026-10-23
 
 ### Changed
@@ -218,6 +225,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.0.3]: https://github.com/Tom-Joad/buybutler/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/Tom-Joad/buybutler/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Tom-Joad/buybutler/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Tom-Joad/buybutler/compare/v0.13.0...v1.0.0
