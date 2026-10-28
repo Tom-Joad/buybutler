@@ -6,6 +6,12 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [1.0.5] - 2026-10-28
+
+### Security
+- Security updates of the distribution packages, picked up by rebuilding the image:
+  - `python3` 3.14.10-r1
+
 ## [1.0.4] - 2026-10-27
 
 ### Security
@@ -231,6 +237,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.0.5]: https://github.com/Tom-Joad/buybutler/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Tom-Joad/buybutler/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/Tom-Joad/buybutler/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/Tom-Joad/buybutler/compare/v1.0.1...v1.0.2
