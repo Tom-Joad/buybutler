@@ -18,7 +18,7 @@ h11==0.16.0  # via httpcore, uvicorn
 httpcore==1.0.9  # via httpx
 idna==3.20  # via anyio, httpx
 opentelemetry-api==1.45.1  # via fastapi
-pyasn1==0.6.4  # via pyasn1-modules, webauthn
+pyasn1==0.6.5  # via pyasn1-modules, webauthn
 pyasn1-modules==0.4.2  # via webauthn
 pycparser==3.12  # via cffi
 pydantic==2.14.1  # via fastapi
