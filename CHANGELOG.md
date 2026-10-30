@@ -6,6 +6,17 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [1.0.6] - 2026-10-30
+
+### Changed
+- Updated dependencies:
+  - pyasn1 from 0.6.4 to 0.6.5
+  - fastapi from 0.151.0 to 0.162.0
+  - starlette from 1.9.0 to 1.10.0
+  - linuxserver/baseimage-alpine from `7a59ee7` to `52106d1`
+  - pycparser from 3.11 to 3.12
+  - httpx2 from 2.15.1 to 2.16.0
+
 ## [1.0.5] - 2026-10-28
 
 ### Security
@@ -237,6 +248,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.0.6]: https://github.com/Tom-Joad/buybutler/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Tom-Joad/buybutler/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Tom-Joad/buybutler/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/Tom-Joad/buybutler/compare/v1.0.2...v1.0.3
