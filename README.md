@@ -37,6 +37,9 @@ entry twice. Rating a product
 again adds to its history instead of replacing it ("recipe changed, now too
 sweet"); the newest rating is the verdict.
 
+The interface is in German, English, French, Italian, Dutch, Polish,
+Portuguese, Spanish and Turkish, see [Languages](#languages).
+
 The container is built on linuxserver.io's Alpine image with its conventions
 (`PUID`, `PGID`, `UMASK`, `TZ`, `/config`).
 
@@ -127,8 +130,8 @@ except scanning; type the barcode instead.
 | `-e PGID` | `911` | Group of the files (Unraid: `100`) |
 | `-e UMASK` | `022` | File mode mask for new files (Unraid: `002`) |
 | `-e TZ` | `Etc/UTC` | Time zone: the default date of a rating, and the log |
-| `-e BUYBUTLER_OFF_LANGUAGE` | `en` | Language of product names from Open Food Facts, two letters (`de`, `fr` …) |
-| `-e BUYBUTLER_CURRENCY` | `EUR` | Currency of all prices, a three-letter code (`EUR`, `CHF` …); amounts are shown in the browser's number format |
+| `-e BUYBUTLER_OFF_LANGUAGE` | `en` | Language of product names and categories from Open Food Facts, two letters (`de`, `fr` …), for users whose own language Open Food Facts has no name in; see [Languages](#languages) |
+| `-e BUYBUTLER_CURRENCY` | `EUR` | Currency of all prices, a three-letter code (`EUR`, `CHF` …); amounts are written as the user's language writes them |
 | `-e BUYBUTLER_OFF_LOOKUP` | `true` | `false` never sends barcodes to Open Food Facts; products are entered by hand |
 | `-e BUYBUTLER_SESSION_DAYS` | `90` | Days a login stays valid without being used (1 to 3650) |
 | `-e BUYBUTLER_MAX_UPLOAD_MB` | `10` | Largest accepted picture (1 to 100); the browser shrinks photos before sending |
@@ -292,6 +295,28 @@ out deletes the copy and the pictures from the phone.** When a new version
 of Buybutler is installed on the server, the app shows "A new version is
 ready" with **Reload**.
 
+## Languages
+
+The interface is in German (`de`), English (`en`), Spanish (`es`), French
+(`fr`), Italian (`it`), Dutch (`nl`), Polish (`pl`), Portuguese (`pt`,
+European) and Turkish (`tr`). It follows the browser's language, English
+when the browser asks for none of these. Under **Account**, **Language**,
+each user picks one; the choice is kept on the server, so every phone the
+user logs in with uses it, and on the phone for the login page and an
+offline start. Dates, times, prices and decimal numbers follow the chosen
+language; price fields take `2,49` as well as `2.49`.
+
+Product names from Open Food Facts come in the user's language when Open
+Food Facts has a name in it, otherwise in the language of
+`BUYBUTLER_OFF_LANGUAGE`, otherwise in the product's main name. Categories
+follow `BUYBUTLER_OFF_LANGUAGE`. What users typed (names, reasons, stores)
+is never translated.
+
+The texts are in `buybutler/static/i18n/<language>.json`; a new language is
+a copy of `en.json` and its code in `auth.LANGUAGES` and `LANGUAGES` in
+`app.js`. `tests/test_i18n.py` checks that every file has every text with
+the same placeholders.
+
 ## Backups
 
 Back up the whole `/config` folder. The database runs in WAL mode: a plain
@@ -408,6 +433,7 @@ works without it, except for the camera.
 | `buybutler/off.py` | Open Food Facts client and cache |
 | `buybutler/images.py` | Stored pictures |
 | `buybutler/static/` | Interface without a build step, stylesheets, fonts, icons |
+| `buybutler/static/i18n/` | The interface's texts, one file per language |
 | `buybutler/sw.js` | Service worker: the app shell and pictures for offline use |
 | `root/etc/s6-overlay/` | s6 services: settings check and migration, app as `abc`, start banner |
 | `root/usr/local/bin/buybutler` | The command for `docker exec` |

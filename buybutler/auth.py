@@ -26,6 +26,10 @@ _MAXMEM = 64 * 1024 * 1024
 MIN_PASSWORD_LENGTH = 10
 USERNAME_MAX = 64
 
+# The languages of the interface (static/i18n/<code>.json). A user's
+# language is one of these, or "" for the browser's own.
+LANGUAGES = ("de", "en", "es", "fr", "it", "nl", "pl", "pt", "tr")
+
 # A hash of a random password, checked when the user name is unknown, so a
 # wrong name takes as long as a wrong password.
 _DUMMY_HASH: str | None = None
@@ -36,6 +40,7 @@ class User:
     id: int
     username: str
     role: str
+    language: str = ""
 
 
 class AuthError(ValueError):
@@ -137,7 +142,7 @@ def set_password(conn: sqlite3.Connection, user_id: int, password: str) -> None:
 def authenticate(conn: sqlite3.Connection, username: str, password: str) -> User | None:
     global _DUMMY_HASH
     row = conn.execute(
-        "SELECT id, username, role, password_hash FROM users WHERE username = ?",
+        "SELECT id, username, role, language, password_hash FROM users WHERE username = ?",
         (username.strip(),),
     ).fetchone()
     if row is None:
@@ -147,7 +152,7 @@ def authenticate(conn: sqlite3.Connection, username: str, password: str) -> User
         return None
     if not verify_password(password, row["password_hash"]):
         return None
-    return User(row["id"], row["username"], row["role"])
+    return User(row["id"], row["username"], row["role"], row["language"])
 
 
 def _token_hash(token: str) -> str:
@@ -178,7 +183,7 @@ def session_user(conn: sqlite3.Connection, token: str, days: int) -> tuple[User 
     """The user a session token belongs to, and whether the session was just
     extended (the caller then renews the cookie, so both expire together)."""
     row = conn.execute(
-        "SELECT u.id, u.username, u.role, s.last_seen_at, s.expires_at"
+        "SELECT u.id, u.username, u.role, u.language, s.last_seen_at, s.expires_at"
         " FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
         (_token_hash(token),),
     ).fetchone()
@@ -188,7 +193,7 @@ def session_user(conn: sqlite3.Connection, token: str, days: int) -> tuple[User 
     if row["expires_at"] < _iso(current):
         end_session(conn, token)
         return None, False
-    user = User(row["id"], row["username"], row["role"])
+    user = User(row["id"], row["username"], row["role"], row["language"])
     # A sliding expiry, written at most once an hour to keep reads cheap.
     if row["last_seen_at"] < _iso(current - timedelta(hours=1)):
         conn.execute(

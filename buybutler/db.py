@@ -232,6 +232,10 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (list_id, store, item_key)
     );
     """,
+    # 7: the language of the interface per user; '' follows the browser.
+    """
+    ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 

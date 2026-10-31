@@ -21,10 +21,10 @@
 <header class="bar" id="bar" hidden>
   <a class="wordmark" href="#/scan">Buybutler<span class="stop">.</span></a>
   <nav>
-    <a href="#/scan" data-nav="scan">Scan</a>
-    <a href="#/shop" data-nav="shop">Shop</a>
-    <a href="#/products" data-nav="lists">Products</a>
-    <a href="#/account" data-nav="account">Account</a>
+    <a href="#/scan" data-nav="scan" data-i18n="nav.scan">Scan</a>
+    <a href="#/shop" data-nav="shop" data-i18n="nav.shop">Shop</a>
+    <a href="#/products" data-nav="lists" data-i18n="nav.products">Products</a>
+    <a href="#/account" data-nav="account" data-i18n="nav.account">Account</a>
   </nav>
   <a class="outbox-badge" id="outbox-badge" href="#/account" hidden></a>
 </header>
@@ -32,19 +32,19 @@
 <!-- The list everything happens in, and the way to the list management. -->
 <div class="listbar" id="listbar" hidden>
   <label class="listbar-pick">
-    <span class="label">List</span>
-    <select id="list-select" aria-label="Current list"></select>
+    <span class="label" data-i18n="listbar.list">List</span>
+    <select id="list-select" aria-label="Current list" data-i18n-aria-label="listbar.current"></select>
   </label>
   <span class="tag tag--quiet" id="list-role" hidden></span>
-  <a class="ghost" href="#/manage">Manage →</a>
+  <a class="ghost" href="#/manage" data-i18n="listbar.manage">Manage →</a>
 </div>
 
 <!-- Shown while the app runs on the copy on this phone. -->
-<p class="notice" id="offline-bar" hidden>No connection: verdicts and prices from the copy on this phone. New ratings, prices and shopping changes wait until the connection is back.</p>
+<p class="notice" id="offline-bar" data-i18n="notice.offline" hidden>No connection: verdicts and prices from the copy on this phone. New ratings, prices and shopping changes wait until the connection is back.</p>
 <!-- A new version was installed in the background. -->
 <div class="notice notice--update" id="update-bar" hidden>
-  <span>A new version of Buybutler is ready.</span>
-  <button class="btn btn--secondary" id="update-reload" type="button">Reload</button>
+  <span data-i18n="notice.update">A new version of Buybutler is ready.</span>
+  <button class="btn btn--secondary" id="update-reload" type="button" data-i18n="notice.reload">Reload</button>
 </div>
 
 <main id="main">
@@ -52,69 +52,69 @@
   <!-- Login -->
   <section class="view" id="view-login" hidden>
     <p class="wordmark wordmark--large">Buybutler<span class="stop">.</span></p>
-    <p class="intro">Buy it again, or not.</p>
+    <p class="intro" data-i18n="login.intro">Buy it again, or not.</p>
     <form id="login-form" class="stack" autocomplete="on">
       <label class="field">
-        <span class="label">User name</span>
+        <span class="label" data-i18n="login.username">User name</span>
         <input name="username" autocomplete="username" autocapitalize="none" required>
       </label>
       <label class="field">
-        <span class="label">Password</span>
+        <span class="label" data-i18n="login.password">Password</span>
         <input name="password" type="password" autocomplete="current-password" required>
       </label>
       <p class="message" id="login-message" role="alert"></p>
-      <button class="btn btn--primary" type="submit">Log in</button>
-      <button class="btn btn--secondary" id="passkey-login" type="button" hidden>Log in with a passkey</button>
+      <button class="btn btn--primary" type="submit" data-i18n="login.submit">Log in</button>
+      <button class="btn btn--secondary" id="passkey-login" type="button" data-i18n="login.passkey" hidden>Log in with a passkey</button>
     </form>
     <!-- Second step of a login with two-factor login turned on. -->
     <form id="second-form" class="stack" autocomplete="off" hidden>
-      <h2 class="section-title">Second step</h2>
+      <h2 class="section-title" data-i18n="login.second_title">Second step</h2>
       <p class="meta" id="second-hint"></p>
       <label class="field" id="second-code-field">
-        <span class="label">Code</span>
+        <span class="label" data-i18n="login.code">Code</span>
         <input name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required>
       </label>
       <p class="message" id="second-message" role="alert"></p>
-      <button class="btn btn--primary" type="submit">Continue</button>
-      <button class="btn btn--secondary" id="second-passkey" type="button" hidden>Use a passkey</button>
-      <button class="btn btn--outline" id="second-cancel" type="button">Start again</button>
+      <button class="btn btn--primary" type="submit" data-i18n="login.continue">Continue</button>
+      <button class="btn btn--secondary" id="second-passkey" type="button" data-i18n="login.second_passkey" hidden>Use a passkey</button>
+      <button class="btn btn--outline" id="second-cancel" type="button" data-i18n="login.start_again">Start again</button>
     </form>
   </section>
 
   <!-- Scan -->
   <section class="view" id="view-scan" hidden>
-    <h1>Scan</h1>
+    <h1 data-i18n="scan.title">Scan</h1>
     <div class="viewfinder" id="viewfinder">
       <video id="video" playsinline muted></video>
       <div class="aim" aria-hidden="true"></div>
-      <p class="viewfinder-text" id="scan-state">Camera off</p>
+      <p class="viewfinder-text" id="scan-state" data-i18n="camera.off">Camera off</p>
     </div>
     <div class="row">
-      <button class="btn btn--primary" id="scan-start" type="button">Start camera</button>
-      <button class="btn btn--outline" id="scan-stop" type="button" hidden>Stop camera</button>
+      <button class="btn btn--primary" id="scan-start" type="button" data-i18n="camera.start">Start camera</button>
+      <button class="btn btn--outline" id="scan-stop" type="button" data-i18n="camera.stop" hidden>Stop camera</button>
     </div>
     <label class="check" id="bulk-switch" hidden>
       <input type="checkbox" id="bulk-on">
-      <span>Add many: confirm each with OK and go on scanning</span>
+      <span data-i18n="scan.bulk">Add many: confirm each with OK and go on scanning</span>
     </label>
     <div class="shop-scan-note" id="bulk-card" role="status" hidden>
       <p id="bulk-card-text"></p>
       <div class="row">
-        <button class="btn btn--primary" id="bulk-ok" type="button">OK</button>
-        <button class="btn btn--outline" id="bulk-skip" type="button">Skip</button>
+        <button class="btn btn--primary" id="bulk-ok" type="button" data-i18n="scan.bulk_ok">OK</button>
+        <button class="btn btn--outline" id="bulk-skip" type="button" data-i18n="scan.bulk_skip">Skip</button>
       </div>
     </div>
-    <h2 class="section-title" id="bulk-title" hidden>Added in this round</h2>
+    <h2 class="section-title" id="bulk-title" data-i18n="scan.bulk_title" hidden>Added in this round</h2>
     <ul class="history bulk-items" id="bulk-items" hidden></ul>
     <form id="manual-form" class="inline-form">
       <label class="field">
-        <span class="label">Or type the barcode</span>
+        <span class="label" data-i18n="scan.manual">Or type the barcode</span>
         <input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14" placeholder="4000000000000" required>
       </label>
-      <button class="btn btn--secondary" type="submit">Look up</button>
+      <button class="btn btn--secondary" type="submit" data-i18n="scan.lookup">Look up</button>
     </form>
     <p class="message" id="scan-message" role="status"></p>
-    <a class="ghost" id="add-by-hand" href="#/new">Add a product without barcode →</a>
+    <a class="ghost" id="add-by-hand" href="#/new" data-i18n="scan.by_hand">Add a product without barcode →</a>
   </section>
 
   <!-- Product -->
@@ -130,17 +130,17 @@
     </div>
     <div class="row">
       <a class="btn btn--primary" id="p-rate" href="#">Rate again</a>
-      <a class="btn btn--outline" id="p-edit" href="#">Edit product</a>
+      <a class="btn btn--outline" id="p-edit" href="#" data-i18n="product.edit">Edit product</a>
     </div>
-    <button class="btn btn--secondary" id="p-shop" type="button">Add to shopping</button>
-    <h2 class="section-title">Prices</h2>
+    <button class="btn btn--secondary" id="p-shop" type="button" data-i18n="product.to_shopping">Add to shopping</button>
+    <h2 class="section-title" data-i18n="product.prices">Prices</h2>
     <div class="price-summary" id="p-price-summary"></div>
     <ol class="history" id="p-prices"></ol>
-    <a class="ghost" id="p-add-price" href="#">Add a price →</a>
-    <h2 class="section-title">History</h2>
+    <a class="ghost" id="p-add-price" href="#" data-i18n="product.add_price">Add a price →</a>
+    <h2 class="section-title" data-i18n="product.history">History</h2>
     <ol class="history" id="p-history"></ol>
     <p class="stamps" id="p-stamps"></p>
-    <button class="btn btn--outline btn--danger" id="p-delete" type="button">Delete product</button>
+    <button class="btn btn--outline btn--danger" id="p-delete" type="button" data-i18n="product.delete">Delete product</button>
   </section>
 
   <!-- New or edited product -->
@@ -149,37 +149,37 @@
     <p class="message" id="pf-source"></p>
     <form id="product-form" class="stack">
       <label class="field">
-        <span class="label">Name</span>
+        <span class="label" data-i18n="form.name">Name</span>
         <input name="name" maxlength="200" required>
       </label>
       <label class="field">
-        <span class="label">Brand</span>
+        <span class="label" data-i18n="form.brand">Brand</span>
         <input name="brand" maxlength="200">
       </label>
       <label class="field">
-        <span class="label">Category</span>
+        <span class="label" data-i18n="form.category">Category</span>
         <input name="category" maxlength="100" list="categories">
       </label>
       <label class="field">
-        <span class="label">Quantity</span>
-        <input name="quantity" maxlength="50" placeholder="500 g">
+        <span class="label" data-i18n="form.quantity">Quantity</span>
+        <input name="quantity" maxlength="50" placeholder="500 g" data-i18n-placeholder="form.quantity_example">
       </label>
       <label class="field">
-        <span class="label">Barcode</span>
+        <span class="label" data-i18n="form.barcode">Barcode</span>
         <input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14">
       </label>
       <label class="check" id="pf-image-choice" hidden>
         <input type="checkbox" name="use_suggested_image" checked>
-        <span>Use the picture from Open Food Facts</span>
+        <span data-i18n="form.use_off_image">Use the picture from Open Food Facts</span>
       </label>
       <label class="field">
-        <span class="label">Own picture</span>
+        <span class="label" data-i18n="form.own_image">Own picture</span>
         <input name="image" type="file" accept="image/*">
       </label>
       <p class="message" id="pf-message" role="alert"></p>
       <div class="row">
         <button class="btn btn--primary" type="submit" id="pf-submit">Save and rate</button>
-        <a class="btn btn--outline" href="#/scan" id="pf-cancel">Cancel</a>
+        <a class="btn btn--outline" href="#/scan" id="pf-cancel" data-i18n="common.cancel">Cancel</a>
       </div>
     </form>
   </section>
@@ -190,63 +190,63 @@
     <h1 id="r-title">Rate</h1>
     <form id="rate-form" class="stack">
       <fieldset class="choice">
-        <legend class="label">Buy it again?</legend>
+        <legend class="label" data-i18n="rate.question">Buy it again?</legend>
         <label class="choice-option choice-option--buy">
           <input type="radio" name="buy_again" value="1" required>
-          <span><i class="mark mark--buy"></i>Buy again</span>
+          <span data-i18n="verdict.buy"><i class="mark mark--buy"></i>Buy again</span>
         </label>
         <label class="choice-option choice-option--skip">
           <input type="radio" name="buy_again" value="0" required>
-          <span><i class="mark mark--skip"></i>Don't buy again</span>
+          <span data-i18n="verdict.skip"><i class="mark mark--skip"></i>Don't buy again</span>
         </label>
       </fieldset>
       <fieldset class="stars-input">
-        <legend class="label">Stars <span id="r-stars-value">none</span></legend>
+        <legend class="label" data-i18n="rate.stars">Stars <span id="r-stars-value">none</span></legend>
         <div class="stars-row" id="r-stars"></div>
       </fieldset>
       <label class="field">
-        <span class="label">Reason</span>
-        <textarea name="reason" rows="4" maxlength="2000" placeholder="What was good, what was not"></textarea>
+        <span class="label" data-i18n="rate.reason">Reason</span>
+        <textarea name="reason" rows="4" maxlength="2000" placeholder="What was good, what was not" data-i18n-placeholder="rate.reason_example"></textarea>
       </label>
       <label class="field">
-        <span class="label">Store</span>
+        <span class="label" data-i18n="rate.store">Store</span>
         <input name="store" maxlength="100" list="stores">
       </label>
       <label class="field">
-        <span class="label">Date</span>
+        <span class="label" data-i18n="rate.date">Date</span>
         <input name="rated_on" type="date" required>
       </label>
       <fieldset class="price-fields" id="r-price-fields">
-        <legend class="label">Price paid, optional</legend>
+        <legend class="label" data-i18n="rate.price_optional">Price paid, optional</legend>
         <div class="price-row">
           <label class="field">
-            <span class="label">Price</span>
+            <span class="label" data-i18n="price.price">Price</span>
             <input name="price" inputmode="decimal" autocomplete="off" placeholder="2.49" pattern="[0-9]+([.,][0-9]{1,2})?">
           </label>
           <label class="field">
-            <span class="label">For</span>
+            <span class="label" data-i18n="price.for">For</span>
             <input name="quantity" inputmode="decimal" autocomplete="off" placeholder="500" pattern="[0-9]+([.,][0-9]+)?">
           </label>
           <label class="field">
-            <span class="label">Unit</span>
+            <span class="label" data-i18n="price.unit">Unit</span>
             <input name="unit" maxlength="20" list="units" autocomplete="off" placeholder="g">
           </label>
         </div>
         <label class="check">
           <input type="checkbox" name="on_offer">
-          <span>On offer</span>
+          <span data-i18n="price.on_offer">On offer</span>
         </label>
       </fieldset>
       <label class="field">
-        <span class="label">Photo</span>
+        <span class="label" data-i18n="rate.photo">Photo</span>
         <input name="photo" type="file" accept="image/*">
       </label>
       <p class="message" id="r-message" role="alert"></p>
       <div class="row">
-        <button class="btn btn--primary" type="submit">Save rating</button>
-        <a class="btn btn--outline" href="#" id="r-cancel">Cancel</a>
+        <button class="btn btn--primary" type="submit" data-i18n="rate.save">Save rating</button>
+        <a class="btn btn--outline" href="#" id="r-cancel" data-i18n="common.cancel">Cancel</a>
       </div>
-      <button class="btn btn--outline btn--danger" type="button" id="r-delete" hidden>Delete rating</button>
+      <button class="btn btn--outline btn--danger" type="button" id="r-delete" data-i18n="rate.delete" hidden>Delete rating</button>
     </form>
   </section>
 
@@ -256,60 +256,60 @@
     <h1 id="pr-title">Add a price</h1>
     <form id="price-form" class="stack">
       <fieldset class="price-fields" id="pr-price-fields">
-        <legend class="label">Price paid</legend>
+        <legend class="label" data-i18n="price.paid">Price paid</legend>
         <div class="price-row">
           <label class="field">
-            <span class="label">Price</span>
+            <span class="label" data-i18n="price.price">Price</span>
             <input name="price" inputmode="decimal" autocomplete="off" placeholder="2.49" pattern="[0-9]+([.,][0-9]{1,2})?">
           </label>
           <label class="field">
-            <span class="label">For</span>
+            <span class="label" data-i18n="price.for">For</span>
             <input name="quantity" inputmode="decimal" autocomplete="off" placeholder="500" pattern="[0-9]+([.,][0-9]+)?">
           </label>
           <label class="field">
-            <span class="label">Unit</span>
+            <span class="label" data-i18n="price.unit">Unit</span>
             <input name="unit" maxlength="20" list="units" autocomplete="off" placeholder="g">
           </label>
         </div>
         <label class="check">
           <input type="checkbox" name="on_offer">
-          <span>On offer</span>
+          <span data-i18n="price.on_offer">On offer</span>
         </label>
       </fieldset>
       <label class="field">
-        <span class="label">Store</span>
+        <span class="label" data-i18n="rate.store">Store</span>
         <input name="store" maxlength="100" list="stores">
       </label>
       <label class="field">
-        <span class="label">Date</span>
+        <span class="label" data-i18n="rate.date">Date</span>
         <input name="bought_on" type="date" required>
       </label>
       <p class="message" id="pr-message" role="alert"></p>
       <div class="row">
-        <button class="btn btn--primary" type="submit">Save price</button>
-        <a class="btn btn--outline" href="#" id="pr-cancel">Cancel</a>
+        <button class="btn btn--primary" type="submit" data-i18n="price.save">Save price</button>
+        <a class="btn btn--outline" href="#" id="pr-cancel" data-i18n="common.cancel">Cancel</a>
       </div>
-      <button class="btn btn--outline btn--danger" type="button" id="pr-delete" hidden>Delete price</button>
+      <button class="btn btn--outline btn--danger" type="button" id="pr-delete" data-i18n="price.delete" hidden>Delete price</button>
     </form>
   </section>
 
   <!-- Lists -->
   <section class="view" id="view-lists" hidden>
-    <h1>Lists</h1>
+    <h1 data-i18n="products.title">Lists</h1>
     <div class="tabs" role="tablist">
-      <button type="button" role="tab" data-verdict="buy">Buy again</button>
-      <button type="button" role="tab" data-verdict="skip">Don't buy</button>
-      <button type="button" role="tab" data-verdict="all">All</button>
+      <button type="button" role="tab" data-verdict="buy" data-i18n="products.tab_buy">Buy again</button>
+      <button type="button" role="tab" data-verdict="skip" data-i18n="products.tab_skip">Don't buy</button>
+      <button type="button" role="tab" data-verdict="all" data-i18n="products.tab_all">All</button>
     </div>
     <form id="filter-form" class="filters">
-      <input name="q" type="search" placeholder="Search name, brand, reason" aria-label="Search">
-      <select name="store" aria-label="Store"><option value="">Every store</option></select>
-      <select name="category" aria-label="Category"><option value="">Every category</option></select>
-      <select name="sort" aria-label="Sort">
-        <option value="recent">Newest first</option>
-        <option value="name">By name</option>
-        <option value="stars">By stars</option>
-        <option value="price">By last price</option>
+      <input name="q" type="search" placeholder="Search name, brand, reason" aria-label="Search" data-i18n-placeholder="products.search" data-i18n-aria-label="products.search_label">
+      <select name="store" aria-label="Store" data-i18n-aria-label="products.store"><option value="">Every store</option></select>
+      <select name="category" aria-label="Category" data-i18n-aria-label="products.category"><option value="">Every category</option></select>
+      <select name="sort" aria-label="Sort" data-i18n-aria-label="products.sort">
+        <option value="recent" data-i18n="products.sort_recent">Newest first</option>
+        <option value="name" data-i18n="products.sort_name">By name</option>
+        <option value="stars" data-i18n="products.sort_stars">By stars</option>
+        <option value="price" data-i18n="products.sort_price">By last price</option>
       </select>
     </form>
     <p class="meta" id="l-count"></p>
@@ -318,15 +318,15 @@
 
   <!-- Lists: overview -->
   <section class="view" id="view-manage" hidden>
-    <h1>Lists</h1>
+    <h1 data-i18n="lists.title">Lists</h1>
     <p class="message" id="m-message" role="status"></p>
     <ul class="list" id="m-lists"></ul>
     <form id="new-list-form" class="inline-form">
       <label class="field">
-        <span class="label">New list</span>
-        <input name="name" maxlength="100" placeholder="Home, Office kitchen" required>
+        <span class="label" data-i18n="lists.new">New list</span>
+        <input name="name" maxlength="100" placeholder="Home, Office kitchen" data-i18n-placeholder="lists.new_example" required>
       </label>
-      <button class="btn btn--primary" type="submit">Create</button>
+      <button class="btn btn--primary" type="submit" data-i18n="lists.create">Create</button>
     </form>
   </section>
 
@@ -338,63 +338,63 @@
     <p class="message" id="l1-message" role="alert"></p>
     <form id="rename-form" class="inline-form" hidden>
       <label class="field">
-        <span class="label">Name</span>
+        <span class="label" data-i18n="lists.name">Name</span>
         <input name="name" maxlength="100" required>
       </label>
-      <button class="btn btn--secondary" type="submit">Rename</button>
+      <button class="btn btn--secondary" type="submit" data-i18n="lists.rename">Rename</button>
     </form>
-    <h2 class="section-title">Members</h2>
+    <h2 class="section-title" data-i18n="lists.members">Members</h2>
     <ul class="history" id="l1-members"></ul>
     <form id="member-form" class="stack" hidden>
       <div class="price-row price-row--member">
         <label class="field">
-          <span class="label">User name</span>
+          <span class="label" data-i18n="lists.username">User name</span>
           <input name="username" autocapitalize="none" autocomplete="off" required>
         </label>
         <label class="field">
-          <span class="label">Role</span>
+          <span class="label" data-i18n="lists.role">Role</span>
           <select name="role">
-            <option value="editor">Editor</option>
-            <option value="viewer">Viewer</option>
-            <option value="owner">Owner</option>
+            <option value="editor" data-i18n="role.editor">Editor</option>
+            <option value="viewer" data-i18n="role.viewer">Viewer</option>
+            <option value="owner" data-i18n="role.owner">Owner</option>
           </select>
         </label>
       </div>
-      <button class="btn btn--secondary" type="submit">Add member</button>
+      <button class="btn btn--secondary" type="submit" data-i18n="lists.add_member">Add member</button>
     </form>
-    <p class="meta">Owners manage members and the list; editors add and change products, ratings and prices;
+    <p class="meta" data-i18n="lists.roles_help">Owners manage members and the list; editors add and change products, ratings and prices;
       viewers only read.</p>
-    <button class="btn btn--outline" id="leave-list" type="button">Leave this list</button>
+    <button class="btn btn--outline" id="leave-list" type="button" data-i18n="lists.leave">Leave this list</button>
     <form id="delete-list-form" class="stack danger-zone" hidden>
-      <h2 class="section-title">Delete list</h2>
-      <p class="meta">Deletes every product, rating, price and photo in this list, for all members. Type the
+      <h2 class="section-title" data-i18n="lists.delete_title">Delete list</h2>
+      <p class="meta" data-i18n="lists.delete_help">Deletes every product, rating, price and photo in this list, for all members. Type the
         list's name to confirm.</p>
       <label class="field">
-        <span class="label">List name</span>
+        <span class="label" data-i18n="lists.delete_name">List name</span>
         <input name="confirm_name" autocomplete="off" required>
       </label>
-      <button class="btn btn--outline btn--danger" type="submit">Delete list for good</button>
+      <button class="btn btn--outline btn--danger" type="submit" data-i18n="lists.delete_submit">Delete list for good</button>
     </form>
   </section>
 
   <!-- Shopping list -->
   <section class="view" id="view-shop" hidden>
-    <h1>Shopping</h1>
+    <h1 data-i18n="shop.title">Shopping</h1>
     <label class="field">
-      <span class="label">Store: its order, and the items for it</span>
+      <span class="label" data-i18n="shop.store">Store: its order, and the items for it</span>
       <select id="shop-store"></select>
     </label>
     <form id="shop-add" class="stack" autocomplete="off">
       <div class="shop-add-row">
         <label class="field">
-          <span class="label">Add a product, or anything else</span>
-          <input name="q" maxlength="100" placeholder="Milk, bread rolls …" autocomplete="off" enterkeyhint="done">
+          <span class="label" data-i18n="shop.add_label">Add a product, or anything else</span>
+          <input name="q" maxlength="100" placeholder="Milk, bread rolls …" data-i18n-placeholder="shop.add_example" autocomplete="off" enterkeyhint="done">
         </label>
         <label class="field">
-          <span class="label">How many</span>
-          <input name="quantity" maxlength="20" placeholder="2x" autocomplete="off">
+          <span class="label" data-i18n="shop.how_many">How many</span>
+          <input name="quantity" maxlength="20" placeholder="2x" data-i18n-placeholder="shop.how_many_example" autocomplete="off">
         </label>
-        <button class="btn btn--secondary" type="submit">Add</button>
+        <button class="btn btn--secondary" type="submit" data-i18n="shop.add">Add</button>
       </div>
       <ul class="shop-suggestions" id="shop-suggestions" hidden></ul>
     </form>
@@ -402,121 +402,129 @@
       <div class="viewfinder" id="shop-viewfinder" hidden>
         <video id="shop-video" playsinline muted></video>
         <div class="aim" aria-hidden="true"></div>
-        <p class="viewfinder-text" id="shop-scan-state">Camera off</p>
+        <p class="viewfinder-text" id="shop-scan-state" data-i18n="camera.off">Camera off</p>
       </div>
       <div class="shop-scan-note" id="shop-scan-note" role="status" hidden>
         <p id="shop-scan-text"></p>
         <div class="row" id="shop-scan-actions" hidden>
-          <button class="btn btn--secondary" id="shop-scan-tick" type="button">Tick off</button>
-          <button class="btn btn--outline" id="shop-scan-more" type="button">Raise quantity</button>
+          <button class="btn btn--secondary" id="shop-scan-tick" type="button" data-i18n="shop.tick">Tick off</button>
+          <button class="btn btn--outline" id="shop-scan-more" type="button" data-i18n="shop.raise">Raise quantity</button>
         </div>
       </div>
       <button class="btn btn--secondary" id="shop-scan-start" type="button">Scan barcodes</button>
-      <button class="btn btn--outline" id="shop-scan-stop" type="button" hidden>Stop camera</button>
+      <button class="btn btn--outline" id="shop-scan-stop" type="button" data-i18n="camera.stop" hidden>Stop camera</button>
     </div>
     <p class="message" id="shop-message" role="alert"></p>
     <ul class="shop-items" id="shop-open"></ul>
-    <p class="meta" id="shop-empty" hidden>Nothing to buy. Add products here, by scanning their barcodes, or with "Add to shopping" on a product.</p>
-    <p class="meta" id="shop-hint" hidden>Drag ≡ to put the items in the order you walk through the store; Buybutler remembers it for next time.</p>
+    <p class="meta" id="shop-empty" data-i18n="shop.empty" hidden>Nothing to buy. Add products here, by scanning their barcodes, or with "Add to shopping" on a product.</p>
+    <p class="meta" id="shop-hint" data-i18n="shop.hint" hidden>Drag ≡ to put the items in the order you walk through the store; Buybutler remembers it for next time.</p>
     <details class="shop-others" id="shop-others" hidden>
       <summary id="shop-others-title"></summary>
       <ul class="shop-items" id="shop-other-items"></ul>
     </details>
-    <h2 class="section-title" id="shop-done-title" hidden>In the basket</h2>
+    <h2 class="section-title" id="shop-done-title" data-i18n="shop.basket" hidden>In the basket</h2>
     <ul class="shop-items" id="shop-done"></ul>
-    <button class="btn btn--outline" id="shop-clear" type="button" hidden>Clear ticked</button>
+    <button class="btn btn--outline" id="shop-clear" type="button" data-i18n="shop.clear" hidden>Clear ticked</button>
   </section>
 
   <!-- Account -->
   <section class="view" id="view-account" hidden>
-    <h1>Account</h1>
+    <h1 data-i18n="account.title">Account</h1>
     <p class="meta" id="a-user"></p>
+    <div class="stack">
+      <label class="field">
+        <span class="label" data-i18n="account.language">Language</span>
+        <select id="a-language"></select>
+      </label>
+      <p class="meta" data-i18n="account.language_help">Applies on every device you log in with.</p>
+      <p class="message" id="a-language-message" role="alert"></p>
+    </div>
     <div id="a-outbox-section" hidden>
-      <h2 class="section-title">Waiting on this phone</h2>
-      <p class="meta">Saved without a connection; sent as soon as Buybutler can be reached.</p>
+      <h2 class="section-title" data-i18n="outbox.title">Waiting on this phone</h2>
+      <p class="meta" data-i18n="outbox.help">Saved without a connection; sent as soon as Buybutler can be reached.</p>
       <ol class="history" id="a-outbox"></ol>
-      <button class="btn btn--secondary" id="a-outbox-send" type="button">Send now</button>
+      <button class="btn btn--secondary" id="a-outbox-send" type="button" data-i18n="outbox.send">Send now</button>
     </div>
     <form id="password-form" class="stack">
-      <h2 class="section-title">Change password</h2>
+      <h2 class="section-title" data-i18n="password.title">Change password</h2>
       <label class="field">
-        <span class="label">Current password</span>
+        <span class="label" data-i18n="password.current">Current password</span>
         <input name="current" type="password" autocomplete="current-password" required>
       </label>
       <label class="field">
-        <span class="label">New password, at least 10 characters</span>
+        <span class="label" data-i18n="password.new">New password, at least 10 characters</span>
         <input name="new" type="password" autocomplete="new-password" minlength="10" required>
       </label>
       <p class="message" id="a-message" role="alert"></p>
-      <button class="btn btn--secondary" type="submit">Change password</button>
+      <button class="btn btn--secondary" type="submit" data-i18n="password.submit">Change password</button>
     </form>
     <div id="tf-section" class="stack">
-      <h2 class="section-title">Two-factor login</h2>
+      <h2 class="section-title" data-i18n="tf.title">Two-factor login</h2>
       <p class="meta" id="tf-status"></p>
       <label class="field">
-        <span class="label">Current password, needed for changes here</span>
+        <span class="label" data-i18n="tf.password">Current password, needed for changes here</span>
         <input id="tf-password" type="password" autocomplete="current-password">
       </label>
-      <button class="btn btn--secondary" id="tf-totp-start" type="button" hidden>Set up an authenticator app</button>
+      <button class="btn btn--secondary" id="tf-totp-start" type="button" data-i18n="tf.totp_start" hidden>Set up an authenticator app</button>
       <div id="tf-totp-setup" class="stack" hidden>
-        <p class="meta">Scan the code with the authenticator app, or type in the key by hand. Then enter the 6-digit code the app shows.</p>
-        <img class="qr" id="tf-qr" alt="QR code for the authenticator app" hidden>
+        <p class="meta" data-i18n="tf.totp_help">Scan the code with the authenticator app, or type in the key by hand. Then enter the 6-digit code the app shows.</p>
+        <img class="qr" id="tf-qr" alt="QR code for the authenticator app" data-i18n-alt="tf.qr_alt" hidden>
         <p class="secret" id="tf-secret"></p>
         <label class="field">
-          <span class="label">6-digit code</span>
+          <span class="label" data-i18n="tf.code">6-digit code</span>
           <input id="tf-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
         </label>
-        <button class="btn btn--secondary" id="tf-totp-confirm" type="button">Confirm</button>
+        <button class="btn btn--secondary" id="tf-totp-confirm" type="button" data-i18n="tf.confirm">Confirm</button>
       </div>
-      <button class="btn btn--outline" id="tf-totp-remove" type="button" hidden>Remove the authenticator app</button>
-      <h3 class="label">Passkeys</h3>
+      <button class="btn btn--outline" id="tf-totp-remove" type="button" data-i18n="tf.totp_remove" hidden>Remove the authenticator app</button>
+      <h3 class="label" data-i18n="tf.passkeys">Passkeys</h3>
       <ul class="history" id="tf-passkeys"></ul>
       <p class="meta" id="tf-passkey-note" hidden></p>
       <div class="stack" id="tf-passkey-add-row" hidden>
         <label class="field">
-          <span class="label">Name of the new passkey</span>
-          <input id="tf-passkey-name" maxlength="60" placeholder="Phone">
+          <span class="label" data-i18n="tf.passkey_name">Name of the new passkey</span>
+          <input id="tf-passkey-name" maxlength="60" placeholder="Phone" data-i18n-placeholder="tf.passkey_name_example">
         </label>
-        <button class="btn btn--secondary" id="tf-passkey-add" type="button">Add a passkey</button>
+        <button class="btn btn--secondary" id="tf-passkey-add" type="button" data-i18n="tf.passkey_add">Add a passkey</button>
       </div>
       <div class="stack" id="tf-codes" hidden>
-        <p class="meta">Recovery codes: each one logs in once without the second factor, for example when the phone is lost. Write them down or keep them in a password manager now; they are not shown again.</p>
+        <p class="meta" data-i18n="tf.codes_help">Recovery codes: each one logs in once without the second factor, for example when the phone is lost. Write them down or keep them in a password manager now; they are not shown again.</p>
         <ol class="codes" id="tf-code-list"></ol>
-        <button class="btn btn--outline" id="tf-codes-copy" type="button">Copy the codes</button>
+        <button class="btn btn--outline" id="tf-codes-copy" type="button" data-i18n="tf.codes_copy">Copy the codes</button>
       </div>
-      <button class="btn btn--outline" id="tf-codes-new" type="button" hidden>New recovery codes</button>
+      <button class="btn btn--outline" id="tf-codes-new" type="button" data-i18n="tf.codes_new" hidden>New recovery codes</button>
       <p class="message" id="tf-message" role="alert"></p>
     </div>
     <div id="a-users-section" hidden>
-      <h2 class="section-title">Users</h2>
+      <h2 class="section-title" data-i18n="users.title">Users</h2>
       <label class="field">
-        <span class="label">Your password, needed for changes here</span>
+        <span class="label" data-i18n="users.password">Your password, needed for changes here</span>
         <input id="u-password" type="password" autocomplete="current-password">
       </label>
       <ul class="history" id="a-users"></ul>
       <form id="user-form" class="stack">
         <div class="price-row price-row--member">
           <label class="field">
-            <span class="label">User name</span>
+            <span class="label" data-i18n="users.username">User name</span>
             <input name="username" autocapitalize="none" autocomplete="off" required>
           </label>
           <label class="field">
-            <span class="label">Role</span>
+            <span class="label" data-i18n="users.role">Role</span>
             <select name="role">
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
+              <option value="member" data-i18n="role.member">Member</option>
+              <option value="admin" data-i18n="role.admin">Admin</option>
             </select>
           </label>
         </div>
         <label class="field">
-          <span class="label">Password, at least 10 characters</span>
+          <span class="label" data-i18n="users.new_user_password">Password, at least 10 characters</span>
           <input name="password" type="password" autocomplete="new-password" minlength="10" required>
         </label>
         <p class="message" id="u-message" role="alert"></p>
-        <button class="btn btn--secondary" type="submit">Add user</button>
+        <button class="btn btn--secondary" type="submit" data-i18n="users.add">Add user</button>
       </form>
     </div>
-    <button class="btn btn--outline" id="logout" type="button">Log out</button>
+    <button class="btn btn--outline" id="logout" type="button" data-i18n="account.logout">Log out</button>
   </section>
 
 </main>
@@ -528,7 +536,7 @@
   <option value="kg"></option>
   <option value="ml"></option>
   <option value="l"></option>
-  <option value="piece"></option>
+  <option value="piece" id="unit-piece"></option>
 </datalist>
 
 </body>

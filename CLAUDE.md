@@ -66,6 +66,12 @@ product step's ID in the body), so it also works offline.
   `base.css`). Verdicts use the status colours with a word; red only for
   the wordmark's stop and the one primary button per view.
 * User text is inserted with `textContent`, never `innerHTML`.
+* Every text of the interface comes from `static/i18n/<language>.json`:
+  `t("key")` in `app.js`, `data-i18n` (and `-placeholder`, `-aria-label`,
+  `-alt`) in `index.html`. A new or changed text goes into every language
+  file. The server's error messages stay English; they are the keys of the
+  files' `server` section, with `{placeholders}` for values.
+  `tests/test_i18n.py` checks both.
 * Every request that changes data carries `X-Buybutler: 1`.
 * Money is integer cents, rounded half up (`Decimal`), never floats; the
   currency comes from `BUYBUTLER_CURRENCY`.
