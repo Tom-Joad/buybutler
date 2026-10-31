@@ -6,7 +6,7 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
-## [Unreleased]
+## [1.1.0] - 2026-10-31
 
 ### Added
 - The interface speaks German, English, French, Italian, Dutch, Polish,
@@ -271,7 +271,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
-[Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.0.6...HEAD
+[1.1.0]: https://github.com/Tom-Joad/buybutler/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/Tom-Joad/buybutler/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Tom-Joad/buybutler/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Tom-Joad/buybutler/compare/v1.0.3...v1.0.4
