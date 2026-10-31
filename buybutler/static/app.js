@@ -30,12 +30,137 @@ const state = {
   shopAdd: null, // barcode of a new product that goes on the shopping list once saved
 };
 
+// ---- Languages --------------------------------------------------------------
+//
+// Every text of the interface comes from static/i18n/<code>.json; English is
+// the fallback for a text a file doesn't have. index.html names its texts
+// with data-i18n (and data-i18n-placeholder, -aria-label, -alt). A user's
+// choice is kept on the server (PUT /api/account/language) and on this
+// phone for the login page and an offline start; without one, the
+// browser's language decides.
+
+// The names in their own language, for the choice under Account.
+const LANGUAGES = {
+  de: "Deutsch", en: "English", es: "Español", fr: "Français", it: "Italiano",
+  nl: "Nederlands", pl: "Polski", pt: "Português", tr: "Türkçe",
+};
+const LANGUAGE_KEY = "buybutler.language";
+
+const i18n = {
+  lang: "en",
+  strings: {}, // the chosen language
+  english: {}, // the fallback
+  server: [], // [pattern, translation] for the server's messages, see serverText
+  plural: new Intl.PluralRules("en"),
+};
+
+function browserLanguage() {
+  for (const tag of navigator.languages || [navigator.language || ""]) {
+    const code = tag.slice(0, 2).toLowerCase();
+    if (LANGUAGES[code]) return code;
+  }
+  return "en";
+}
+
+// The browser's own variant of the language when it has one ("de-AT"), for
+// dates and numbers.
+function locale() {
+  return (navigator.languages || []).find((tag) => tag.toLowerCase().startsWith(i18n.lang)) || i18n.lang;
+}
+
+async function languageFile(code) {
+  const res = await fetch(`/static/i18n/${code}.json`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`language ${code}: ${res.status}`);
+  return res.json();
+}
+
+// The server's messages are its English texts; the files translate them,
+// with {placeholders} where the server fills in a value.
+function serverPatterns(english, strings) {
+  const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return Object.keys(english.server || {}).map((key) => {
+    const names = [];
+    const source = escape(key).replace(/\\\{([\w.]+)\\\}/g, (_, name) => {
+      names.push(name);
+      return "(.+?)";
+    });
+    return { pattern: new RegExp(`^${source}$`), names, text: (strings.server || {})[key] || key };
+  });
+}
+
+async function useLanguage(code) {
+  if (!LANGUAGES[code]) code = "en";
+  if (code === i18n.lang && i18n.english.server) return;
+  try {
+    const english = i18n.english.server ? i18n.english : await languageFile("en");
+    const strings = code === "en" ? english : await languageFile(code);
+    Object.assign(i18n, { lang: code, strings, english, server: serverPatterns(english, strings) });
+  } catch {
+    // No file (offline before it was ever loaded): the texts stay as they are.
+    return;
+  }
+  i18n.plural = new Intl.PluralRules(locale());
+  document.documentElement.lang = code;
+  translatePage();
+  // What is on screen outside the view being opened.
+  if (state.lists) renderListBar();
+  if (state.user) updateOutboxBadge();
+}
+
+function t(key, params = {}) {
+  let text = i18n.strings[key] ?? i18n.english[key] ?? key;
+  if (typeof text === "object") {
+    const forms = i18n.strings[key] || i18n.english[key];
+    text = forms[i18n.plural.select(params.n)] ?? forms.other;
+  }
+  return text.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+}
+
+function serverText(message) {
+  for (const { pattern, names, text } of i18n.server) {
+    const m = pattern.exec(message);
+    if (m) return names.reduce((out, name, n) => out.replace(`{${name}}`, m[n + 1]), text);
+  }
+  return message;
+}
+
+// An element's own text, next to child elements it keeps (a mark, a value).
+function setOwnText(node, text) {
+  const own = [...node.childNodes].find((c) => c.nodeType === Node.TEXT_NODE && c.data.trim());
+  if (!own || node.children.length === 0) {
+    node.textContent = text;
+    return;
+  }
+  const [, before, after] = /^(\s*)[\s\S]*?(\s*)$/.exec(own.data);
+  own.data = before + text + after;
+}
+
+function translatePage() {
+  for (const node of document.querySelectorAll("[data-i18n]")) setOwnText(node, t(node.dataset.i18n));
+  for (const attr of ["placeholder", "aria-label", "alt"]) {
+    for (const node of document.querySelectorAll(`[data-i18n-${attr}]`)) {
+      node.setAttribute(attr, t(node.getAttribute(`data-i18n-${attr}`)));
+    }
+  }
+  $("#unit-piece").value = t("unit.piece");
+  // Numbers as this language writes them.
+  for (const input of document.querySelectorAll("input[name=price]")) input.placeholder = decimal(2.49, 2);
+}
+
+// The language the user chose, or the browser's.
+function wantedLanguage() {
+  const chosen = state.user && state.user.language !== undefined ? state.user.language : remembered(LANGUAGE_KEY);
+  return chosen || browserLanguage();
+}
+
 // ---- API ----------------------------------------------------------------
 
+// message is in the user's language; detail is the server's own text.
 class ApiError extends Error {
-  constructor(status, message) {
-    super(message);
+  constructor(status, detail) {
+    super(serverText(detail));
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -43,7 +168,7 @@ class ApiError extends Error {
 // proxy couldn't reach Buybutler.
 class NetworkError extends Error {
   constructor() {
-    super("No connection to Buybutler. Check the network and try again.");
+    super(t("error.network"));
     this.offline = true;
   }
 }
@@ -94,14 +219,18 @@ async function api(method, path, body, { retries = RETRY_DELAYS.length, list } =
     state.user = null;
     forgetOffline();
     go("#/login");
-    throw new ApiError(401, "Logged out");
+    throw new ApiError(401, t("error.logged_out"));
   }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     let detail = data.detail;
-    if (Array.isArray(detail)) detail = detail.map((d) => d.msg.replace(/^Value error, /, "")).join("; ");
-    throw new ApiError(res.status, detail || `Request failed (${res.status})`);
+    if (Array.isArray(detail)) {
+      const err = new ApiError(res.status, detail.map((d) => d.msg.replace(/^Value error, /, "")).join("; "));
+      err.message = detail.map((d) => serverText(d.msg.replace(/^Value error, /, ""))).join("; ");
+      throw err;
+    }
+    throw new ApiError(res.status, detail || t("error.request_failed", { status: res.status }));
   }
   return data;
 }
@@ -173,7 +302,8 @@ function remembered(key) {
 }
 
 function rememberUser(user) {
-  remember(USER_KEY, { username: user.username, role: user.role, currency: user.currency });
+  remember(USER_KEY, { username: user.username, role: user.role, currency: user.currency, language: user.language });
+  remember(LANGUAGE_KEY, user.language || "");
 }
 
 async function forgetOffline() {
@@ -190,8 +320,7 @@ async function forgetOffline() {
 }
 
 function offlineNote() {
-  const when = Known.copy ? ` from ${stamp(Known.copy.fetched)}` : "";
-  return `Offline: showing the copy on this phone${when}.`;
+  return Known.copy ? t("offline.note_from", { time: stamp(Known.copy.fetched) }) : t("offline.note");
 }
 
 // ---- Service worker and updates -------------------------------------------
@@ -406,7 +535,8 @@ async function updateOutboxBadge() {
   const waiting = jobs.length - failed;
   const badge = $("#outbox-badge");
   badge.hidden = jobs.length === 0;
-  badge.textContent = [waiting && `${waiting} waiting`, failed && `${failed} not sent`].filter(Boolean).join(" · ");
+  badge.textContent = [waiting && t("outbox.waiting", { n: waiting }), failed && t("outbox.failed", { n: failed })]
+    .filter(Boolean).join(" · ");
   badge.classList.toggle("is-failed", failed > 0);
   if (!$("#view-account").hidden) renderOutbox(jobs);
 }
@@ -437,7 +567,6 @@ function takeFlash(target) {
   state.flash = null;
 }
 
-const QUEUED = "No connection. Saved on this phone; it is sent when the connection is back.";
 
 function showError(target, err) {
   target.textContent = err.message;
@@ -451,10 +580,31 @@ function showInfo(target, text) {
 
 // ---- Formatting -----------------------------------------------------------
 
+// A moment (ISO 8601 from the server) as date and time, as the language writes it.
 function stamp(iso) {
-  const d = new Date(iso);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return new Intl.DateTimeFormat(locale(), { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
+}
+
+// A day ("2026-10-31", a rating's or a price's) as the language writes it.
+function day(ymd) {
+  const [y, m, d] = (ymd || "").split("-").map(Number);
+  if (!y || !m || !d) return ymd || "";
+  return new Intl.DateTimeFormat(locale(), { dateStyle: "medium" }).format(new Date(y, m - 1, d));
+}
+
+// 2.49 as "2.49" or "2,49"; the fields take either.
+function decimal(value, digits) {
+  return new Intl.NumberFormat(locale(), { minimumFractionDigits: digits, maximumFractionDigits: digits ?? 6, useGrouping: false })
+    .format(value);
+}
+
+// A list of words with "and" in the language: "a, b and c".
+function andList(words) {
+  try {
+    return new Intl.ListFormat(locale(), { type: "conjunction" }).format(words);
+  } catch {
+    return words.join(", ");
+  }
 }
 
 function today() {
@@ -464,7 +614,7 @@ function today() {
 }
 
 function stars(count) {
-  const box = el("span", { class: "stars", "aria-label": count ? `${count} of 5 stars` : "No stars" });
+  const box = el("span", { class: "stars", "aria-label": count ? t("stars.of_five", { n: count }) : t("stars.none") });
   for (let i = 1; i <= 5; i++) box.append(el("i", { class: count && i <= count ? "is-on" : "" }));
   box.append(el("b", { text: count ? `${count}/5` : "–" }));
   return box;
@@ -475,28 +625,28 @@ function stars(count) {
 function money(cents) {
   const currency = (state.user && state.user.currency) || "EUR";
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(cents / 100);
+    return new Intl.NumberFormat(locale(), { style: "currency", currency }).format(cents / 100);
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;
   }
 }
 
 // "2,49" or "2.49" -> 249; empty -> null.
-function parseAmount(text) {
-  const t = text.trim();
-  if (!t) return null;
-  if (!/^\d+([.,]\d{1,2})?$/.test(t)) throw new Error("Enter the price as a number, e.g. 2.49");
-  const [whole, frac = ""] = t.replace(",", ".").split(".");
+function parseAmount(raw) {
+  const text = raw.trim();
+  if (!text) return null;
+  if (!/^\d+([.,]\d{1,2})?$/.test(text)) throw new Error(t("price.bad_amount", { example: decimal(2.49, 2) }));
+  const [whole, frac = ""] = text.replace(",", ".").split(".");
   return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
 }
 
-function parseQuantity(text) {
-  const t = text.trim();
-  if (!t) return null;
-  if (!/^\d+([.,]\d+)?$/.test(t) || Number(t.replace(",", ".")) <= 0) {
-    throw new Error("Enter the quantity as a number, e.g. 500");
+function parseQuantity(raw) {
+  const text = raw.trim();
+  if (!text) return null;
+  if (!/^\d+([.,]\d+)?$/.test(text) || Number(text.replace(",", ".")) <= 0) {
+    throw new Error(t("price.bad_quantity"));
   }
-  return Number(t.replace(",", "."));
+  return Number(text.replace(",", "."));
 }
 
 // The price fields of a form as an API object; null when no price was entered.
@@ -506,14 +656,14 @@ function readPrice(form) {
   const unit = form.unit.value.trim();
   // The quantity is often prefilled; without a price nothing is stored.
   if (amount === null) return null;
-  if (quantity !== null && !unit) throw new Error("Enter the unit for the quantity, e.g. g or l.");
-  if (quantity === null && unit) throw new Error("Enter the quantity for the unit.");
+  if (quantity !== null && !unit) throw new Error(t("price.unit_missing"));
+  if (quantity === null && unit) throw new Error(t("price.quantity_missing"));
   return { amount_cents: amount, quantity, unit, on_offer: form.on_offer.checked };
 }
 
 function fillPriceFields(form, pr) {
-  form.price.value = pr ? (pr.amount_cents / 100).toFixed(2) : "";
-  form.quantity.value = pr && pr.quantity ? String(pr.quantity) : "";
+  form.price.value = pr ? decimal(pr.amount_cents / 100, 2) : "";
+  form.quantity.value = pr && pr.quantity ? decimal(pr.quantity) : "";
   form.unit.value = pr ? pr.unit : "";
   form.on_offer.checked = !!(pr && pr.on_offer);
 }
@@ -523,7 +673,7 @@ function fillPriceFields(form, pr) {
 function suggestQuantity(form, product) {
   const last = product.price && product.price.last;
   if (last && last.quantity) {
-    form.quantity.value = String(last.quantity);
+    form.quantity.value = decimal(last.quantity);
     form.unit.value = last.unit;
     return;
   }
@@ -534,16 +684,20 @@ function suggestQuantity(form, product) {
   }
 }
 
+// "piece" is the server's word for the comparison unit of counted things.
+const unitWord = (unit) => (unit === "piece" ? t("unit.piece") : unit);
+const perUnit = (up) => t("price.per", { price: money(up.amount_cents), unit: unitWord(up.per) });
+
 function priceText(pr) {
   const parts = [money(pr.amount_cents)];
-  if (pr.quantity) parts.push(`for ${pr.quantity} ${pr.unit}`);
-  if (pr.unit_price) parts.push(`${money(pr.unit_price.amount_cents)} per ${pr.unit_price.per}`);
+  if (pr.quantity) parts.push(t("price.for_quantity", { quantity: decimal(pr.quantity), unit: pr.unit }));
+  if (pr.unit_price) parts.push(perUnit(pr.unit_price));
   return parts.join(" · ");
 }
 
 function verdictWord(buy) {
   return el("span", { class: "word" }, el("i", { class: `mark mark--${buy ? "buy" : "skip"}` }),
-    document.createTextNode(buy ? "Buy again" : "Don't buy again"));
+    document.createTextNode(t(buy ? "verdict.buy" : "verdict.skip")));
 }
 
 // ---- Router ---------------------------------------------------------------
@@ -586,6 +740,7 @@ async function route() {
       state.user = await api("GET", "/api/session", undefined, { retries: 1 });
       state.offline = false;
       rememberUser(state.user);
+      await useLanguage(wantedLanguage());
     } catch (err) {
       const known = err.offline ? remembered(USER_KEY) : null;
       if (known) {
@@ -593,6 +748,7 @@ async function route() {
         // the connection is back (see goOnline).
         state.user = known;
         state.offline = true;
+        await useLanguage(wantedLanguage());
         state.lists = remembered(LISTS_KEY);
         state.listId = storedListId();
         renderListBar();
@@ -620,7 +776,7 @@ async function route() {
   }
   if (state.user && state.lists && state.lists.length === 0 && state.listId === null
       && !["manage", "account", "login"].includes(parts[0])) {
-    flash("Create your first list to start. Lists can be shared with other users.");
+    flash(t("scan.first_list"));
     go("#/manage");
     return;
   }
@@ -717,14 +873,14 @@ function currentList() {
   return (state.lists || []).find((l) => l.id === state.listId) || null;
 }
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 function canEdit() {
   const list = currentList();
   return !list || list.role !== "viewer";
 }
 
-const ROLE_WORD = { owner: "Owner", editor: "Editor", viewer: "Read only" };
+// A viewer's role reads "Read only" in the list bar and member lists.
+const roleWord = (role) => t(role === "viewer" ? "role.read_only" : `role.${role}`);
 
 function renderListBar() {
   const select = $("#list-select");
@@ -734,7 +890,7 @@ function renderListBar() {
   const list = currentList();
   const tag = $("#list-role");
   tag.hidden = !list || list.role !== "viewer";
-  tag.textContent = list ? ROLE_WORD[list.role] : "";
+  tag.textContent = list ? roleWord(list.role) : "";
   const bar = $("#listbar");
   if (!$("#view-login").hidden || lists.length === 0) bar.hidden = true;
   else bar.hidden = false;
@@ -753,7 +909,7 @@ async function showManage() {
   $("#new-list-form").reset();
   $("#m-lists").replaceChildren(
     ...state.lists.map((l) => {
-      const open = el("button", { type: "button", class: "edit linkish", text: l.id === state.listId ? "In use" : "Use" });
+      const open = el("button", { type: "button", class: "edit linkish", text: t(l.id === state.listId ? "lists.in_use" : "lists.use") });
       open.addEventListener("click", () => {
         setList(l.id);
         go("#/scan");
@@ -763,8 +919,8 @@ async function showManage() {
           el("span", { class: "text" },
             el("span", { class: "name", text: l.name }),
             el("span", { class: "sub" },
-              el("span", { class: "word", text: ROLE_WORD[l.role] }),
-              el("span", { text: `${plural(l.members, "member")} · ${plural(l.products, "product")}` })))),
+              el("span", { class: "word", text: roleWord(l.role) }),
+              el("span", { text: `${t("count.members", { n: l.members })} · ${t("count.products", { n: l.products })}` })))),
         open);
     }),
   );
@@ -777,7 +933,7 @@ $("#new-list-form").addEventListener("submit", async (ev) => {
     const created = await api("POST", "/api/lists", { name: form.name.value });
     setList(created.id);
     await showManage();
-    showInfo($("#m-message"), `Created ${created.name}. It is the list in use now.`);
+    showInfo($("#m-message"), t("lists.created", { name: created.name }));
   } catch (err) {
     showError($("#m-message"), err);
   }
@@ -791,10 +947,11 @@ async function showListDetail(id) {
   show("view-list", "lists");
   const owner = list.role === "owner";
   showInfo($("#l1-message"), "");
-  $("#l1-role").textContent = `You: ${ROLE_WORD[list.role]}`;
+  $("#l1-role").textContent = t("lists.you", { role: roleWord(list.role) });
   $("#l1-name").textContent = list.name;
-  $("#l1-stamps").textContent = `Created ${stamp(list.created_at)} · changed ${stamp(list.updated_at)}`
-    + ` · ${plural(list.products, "product")}`;
+  $("#l1-stamps").textContent = t("lists.stamps", {
+    created: stamp(list.created_at), changed: stamp(list.updated_at), products: t("count.products", { n: list.products }),
+  });
   $("#rename-form").hidden = !owner;
   $("#rename-form").name.value = list.name;
   $("#member-form").hidden = !owner;
@@ -807,8 +964,8 @@ async function showListDetail(id) {
     ...members.map((m) => {
       const actions = el("div", { class: "member-actions" });
       if (owner) {
-        const role = el("select", { "aria-label": `Role of ${m.username}` },
-          ...["owner", "editor", "viewer"].map((r) => el("option", { value: r, text: ROLE_WORD[r] })));
+        const role = el("select", { "aria-label": t("lists.role_of", { name: m.username }) },
+          ...["owner", "editor", "viewer"].map((r) => el("option", { value: r, text: roleWord(r) })));
         role.value = m.role;
         role.addEventListener("change", async () => {
           try {
@@ -821,9 +978,9 @@ async function showListDetail(id) {
         });
         actions.append(role);
         if (!m.you) {
-          const remove = el("button", { type: "button", class: "edit linkish", text: "Remove" });
+          const remove = el("button", { type: "button", class: "edit linkish", text: t("common.remove") });
           remove.addEventListener("click", async () => {
-            if (!confirm(`Remove ${m.username} from ${list.name}?`)) return;
+            if (!confirm(t("lists.remove_confirm", { name: m.username, list: list.name }))) return;
             try {
               await api("DELETE", `/api/lists/${id}/members/${m.user_id}`);
               await showListDetail(id);
@@ -834,12 +991,12 @@ async function showListDetail(id) {
           actions.append(remove);
         }
       } else {
-        actions.append(el("span", { class: "word", text: ROLE_WORD[m.role] }));
+        actions.append(el("span", { class: "word", text: roleWord(m.role) }));
       }
       return el("li", {},
-        el("div", { class: "head" }, el("span", { class: "word", text: m.you ? `${m.username} (you)` : m.username })),
+        el("div", { class: "head" }, el("span", { class: "word", text: m.you ? t("common.you", { name: m.username }) : m.username })),
         actions,
-        el("p", { class: "stamps", text: `Member since ${stamp(m.created_at)}` }));
+        el("p", { class: "stamps", text: t("lists.member_since", { time: stamp(m.created_at) }) }));
     }),
   );
   $("#leave-list").dataset.user = members.find((m) => m.you).user_id;
@@ -864,7 +1021,7 @@ $("#member-form").addEventListener("submit", async (ev) => {
   try {
     await api("POST", `/api/lists/${id}/members`, { username: name, role: form.role.value });
     await showListDetail(id);
-    showInfo($("#l1-message"), `${name} can use this list now.`);
+    showInfo($("#l1-message"), t("lists.member_added", { name }));
   } catch (err) {
     showError($("#l1-message"), err);
   }
@@ -872,7 +1029,7 @@ $("#member-form").addEventListener("submit", async (ev) => {
 
 $("#leave-list").addEventListener("click", async () => {
   const id = Number($("#view-list").dataset.list);
-  if (!confirm("Leave this list? You lose access until an owner adds you again.")) return;
+  if (!confirm(t("lists.leave_confirm"))) return;
   try {
     await api("DELETE", `/api/lists/${id}/members/${$("#leave-list").dataset.user}`);
     if (state.listId === id) setList(null);
@@ -887,12 +1044,12 @@ $("#delete-list-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const id = Number($("#view-list").dataset.list);
   const name = ev.currentTarget.confirm_name.value;
-  if (!confirm("Delete this list with everything in it, for all members?")) return;
+  if (!confirm(t("lists.delete_confirm"))) return;
   try {
     await api("DELETE", `/api/lists/${id}`, { confirm_name: name });
     if (state.listId === id) setList(null);
     state.lists = null;
-    flash("The list was deleted.");
+    flash(t("lists.deleted"));
     go("#/manage");
   } catch (err) {
     showError($("#l1-message"), err);
@@ -963,9 +1120,9 @@ async function passkeyCreate(options) {
 // The browser's own errors when the user cancels or the device refuses.
 function passkeyError(err) {
   if (err instanceof ApiError || err.offline) return err;
-  if (err.name === "NotAllowedError") return new Error("Cancelled, or the passkey wasn't available.");
-  if (err.name === "InvalidStateError") return new Error("This device holds a passkey for Buybutler already.");
-  return new Error(`The passkey didn't work: ${err.message}`);
+  if (err.name === "NotAllowedError") return new Error(t("tf.passkey_cancelled"));
+  if (err.name === "InvalidStateError") return new Error(t("tf.passkey_exists"));
+  return new Error(t("tf.passkey_failed", { error: err.message }));
 }
 
 // ---- Login and account ----------------------------------------------------
@@ -984,19 +1141,19 @@ function showLogin() {
     .catch(() => {});
 }
 
-function finishLogin(user) {
+async function finishLogin(user) {
   const before = remembered(USER_KEY);
   // Another user on this phone never sees the previous one's copy.
   if (before && before.username !== user.username) forgetOffline();
-  state.user = { username: user.username, role: user.role, currency: user.currency };
+  state.user = { username: user.username, role: user.role, currency: user.currency, language: user.language };
   state.offline = false;
   rememberUser(state.user);
+  await useLanguage(wantedLanguage());
   state.lists = null;
   pendingLogin = null;
   $("#login-form").password.value = "";
   if (user.recovery_codes_left !== undefined) {
-    flash(`Logged in with a recovery code; ${plural(user.recovery_codes_left, "code")} left. `
-      + "New ones are under Account, Two-factor login.");
+    flash(t("login.recovery_used", { left: t("count.codes", { n: user.recovery_codes_left }) }));
   }
   go("#/scan");
 }
@@ -1010,9 +1167,7 @@ function showSecondStep(step) {
   showInfo($("#second-message"), "");
   const totp = step.methods.includes("totp");
   const passkey = step.methods.includes("passkey") && Boolean(window.PublicKeyCredential);
-  $("#second-hint").textContent = totp
-    ? "Enter the 6-digit code from your authenticator app, or a recovery code."
-    : "Use your passkey, or enter a recovery code.";
+  $("#second-hint").textContent = t(totp ? "login.hint_totp" : "login.hint_passkey");
   $("#second-passkey").hidden = !passkey;
   form.code.inputMode = totp ? "numeric" : "text";
   if (passkey && !totp) $("#second-passkey").focus();
@@ -1030,7 +1185,7 @@ $("#login-form").addEventListener("submit", async (ev) => {
       password: form.password.value,
     });
     if (result.second_factor) showSecondStep(result.second_factor);
-    else finishLogin(result);
+    else await finishLogin(result);
   } catch (err) {
     showError(msg, err);
   }
@@ -1040,12 +1195,12 @@ $("#second-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const form = ev.currentTarget;
   try {
-    finishLogin(await api("POST", "/api/session/second-factor",
+    await finishLogin(await api("POST", "/api/session/second-factor",
       { ticket: pendingLogin.ticket, code: form.code.value.trim() }, { retries: 0 }));
   } catch (err) {
     form.code.value = "";
     showError($("#second-message"), err);
-    if (err.status === 401 && /start again/.test(err.message)) setTimeout(showLogin, 2500);
+    if (err.status === 401 && /start again/.test(err.detail)) setTimeout(showLogin, 2500);
   }
 });
 
@@ -1056,7 +1211,7 @@ async function loginWithPasskey(ticket, msg) {
   try {
     const start = await api("POST", "/api/session/passkey/options", ticket ? { ticket } : {}, { retries: 0 });
     const credential = await passkeyGet(start.options);
-    finishLogin(await api("POST", "/api/session/passkey", { ticket: start.ticket, credential }, { retries: 0 }));
+    await finishLogin(await api("POST", "/api/session/passkey", { ticket: start.ticket, credential }, { retries: 0 }));
   } catch (err) {
     showError(msg, passkeyError(err));
   }
@@ -1067,7 +1222,8 @@ $("#second-passkey").addEventListener("click", () => loginWithPasskey(pendingLog
 
 function showAccount() {
   show("view-account", "account");
-  $("#a-user").textContent = `Logged in as ${state.user.username} (${state.user.role})`;
+  $("#a-user").textContent = t("account.logged_in", { name: state.user.username, role: t(`role.${state.user.role}`) });
+  renderLanguageChoice();
   $("#password-form").reset();
   showInfo($("#a-message"), "");
   updateOutboxBadge();
@@ -1076,12 +1232,36 @@ function showAccount() {
   if (state.user.role === "admin") loadUsers().catch((err) => showError($("#u-message"), err));
 }
 
+function renderLanguageChoice() {
+  const select = $("#a-language");
+  select.replaceChildren(
+    el("option", { value: "", text: t("account.language_auto", { name: LANGUAGES[browserLanguage()] }) }),
+    ...Object.entries(LANGUAGES).map(([code, name]) => el("option", { value: code, lang: code, text: name })),
+  );
+  select.value = state.user.language || "";
+  showInfo($("#a-language-message"), "");
+}
+
+$("#a-language").addEventListener("change", async (ev) => {
+  const select = ev.currentTarget;
+  try {
+    const user = await api("PUT", "/api/account/language", { language: select.value }, { retries: 0 });
+    state.user.language = user.language;
+    rememberUser(state.user);
+    await useLanguage(wantedLanguage());
+    showAccount();
+  } catch (err) {
+    select.value = state.user.language || "";
+    showError($("#a-language-message"), err);
+  }
+});
+
 // Changes to users ask for the admin's own password (see AdminConfirm on the server).
 function adminPassword() {
   const password = $("#u-password").value;
   if (!password) {
     $("#u-password").focus();
-    throw new Error("Enter your password first.");
+    throw new Error(t("users.password_first"));
   }
   return password;
 }
@@ -1102,8 +1282,8 @@ function renderUsers(users) {
     ...users.map((u) => {
       const me = u.username === state.user.username;
       const actions = el("div", { class: "member-actions" });
-      const role = el("select", { "aria-label": `Role of ${u.username}` },
-        el("option", { value: "member", text: "Member" }), el("option", { value: "admin", text: "Admin" }));
+      const role = el("select", { "aria-label": t("lists.role_of", { name: u.username }) },
+        el("option", { value: "member", text: t("role.member") }), el("option", { value: "admin", text: t("role.admin") }));
       role.value = u.role;
       role.addEventListener("change", async () => {
         try {
@@ -1114,28 +1294,27 @@ function renderUsers(users) {
         }
       });
       actions.append(role);
-      const reset = el("button", { type: "button", class: "edit linkish", text: "New password" });
+      const reset = el("button", { type: "button", class: "edit linkish", text: t("users.new_password") });
       reset.addEventListener("click", async () => {
         try {
           adminPassword();
-          const password = prompt(`New password for ${u.username} (at least 10 characters). Their sessions end.`);
+          const password = prompt(t("users.new_password_prompt", { name: u.username }));
           if (!password) return;
           await adminChange("POST", `/api/users/${u.id}/password`, { password });
-          showInfo($("#u-message"), `Password of ${u.username} changed.`);
+          showInfo($("#u-message"), t("users.password_changed", { name: u.username }));
         } catch (err) {
           showError($("#u-message"), err);
         }
       });
       actions.append(reset);
       if (u.two_factor) {
-        const reset2fa = el("button", { type: "button", class: "edit linkish", text: "Reset two-factor" });
+        const reset2fa = el("button", { type: "button", class: "edit linkish", text: t("users.reset_2fa") });
         reset2fa.addEventListener("click", async () => {
           try {
             adminPassword();
-            if (!confirm(`Remove the authenticator app, passkeys and recovery codes of ${u.username}? `
-              + "Their password alone logs in again.")) return;
+            if (!confirm(t("users.reset_2fa_confirm", { name: u.username }))) return;
             renderUsers((await adminChange("POST", `/api/users/${u.id}/reset-2fa`, {})).users);
-            showInfo($("#u-message"), `Two-factor login of ${u.username} removed.`);
+            showInfo($("#u-message"), t("users.reset_2fa_done", { name: u.username }));
           } catch (err) {
             showError($("#u-message"), err);
           }
@@ -1143,11 +1322,11 @@ function renderUsers(users) {
         actions.append(reset2fa);
       }
       if (!me) {
-        const remove = el("button", { type: "button", class: "edit linkish", text: "Delete" });
+        const remove = el("button", { type: "button", class: "edit linkish", text: t("common.delete") });
         remove.addEventListener("click", async () => {
           try {
             adminPassword();
-            if (!confirm(`Delete ${u.username}? Lists only they use are deleted too.`)) return;
+            if (!confirm(t("users.delete_confirm", { name: u.username }))) return;
             await adminChange("DELETE", `/api/users/${u.id}`, {});
             await loadUsers();
           } catch (err) {
@@ -1157,10 +1336,10 @@ function renderUsers(users) {
         actions.append(remove);
       }
       return el("li", {},
-        el("div", { class: "head" }, el("span", { class: "word", text: me ? `${u.username} (you)` : u.username })),
+        el("div", { class: "head" }, el("span", { class: "word", text: me ? t("common.you", { name: u.username }) : u.username })),
         actions,
-        el("p", { class: "stamps", text: `${plural(u.lists, "list")}${u.two_factor ? " · two-factor" : ""}`
-          + ` · created ${stamp(u.created_at)}` }));
+        el("p", { class: "stamps", text: [t("count.lists", { n: u.lists }), u.two_factor ? t("users.two_factor") : null,
+          t("users.created", { time: stamp(u.created_at) })].filter(Boolean).join(" · ") }));
     }),
   );
 }
@@ -1261,7 +1440,7 @@ async function renderShop() {
   const select = $("#shop-store");
   const stores = [...shop.data.stores];
   if (store && !stores.some((x) => sameStore(x, store))) stores.push(store);
-  select.replaceChildren(el("option", { value: "", text: "Any store" }),
+  select.replaceChildren(el("option", { value: "", text: t("shop.any_store") }),
     ...stores.map((x) => el("option", { value: x, text: x })));
   select.value = stores.find((x) => sameStore(x, store)) || "";
 
@@ -1279,7 +1458,7 @@ async function renderShop() {
   $("#shop-empty").hidden = here.length > 0;
   $("#shop-hint").hidden = !editable || here.length < 2 || here.some((i) => i.position !== null);
   $("#shop-others").hidden = elsewhere.length === 0;
-  $("#shop-others-title").textContent = `${plural(elsewhere.length, "item")} for other stores`;
+  $("#shop-others-title").textContent = t("shop.others", { n: elsewhere.length });
   $("#shop-other-items").replaceChildren(...elsewhere.map((i) => shopRow(i, editable, false)));
   $("#shop-done-title").hidden = done.length === 0;
   $("#shop-done").replaceChildren(...done.map((i) => shopRow(i, editable, false)));
@@ -1291,29 +1470,31 @@ function shopRow(item, editable, draggable) {
   li.dataset.id = item.id;
   li.dataset.key = item.key;
   if (editable && draggable) {
-    const handle = el("button", { type: "button", class: "handle", "aria-label": `Move ${item.name}`, text: "≡" });
+    const handle = el("button", { type: "button", class: "handle", "aria-label": t("shop.move", { name: item.name }), text: "≡" });
     handle.addEventListener("pointerdown", (ev) => startDrag(ev, li));
     li.append(handle);
   }
   const sub = [item.quantity, item.brand, item.store && !draggable && !item.checked ? item.store : null,
-    item.checked && item.checked_by ? `ticked by ${item.checked_by}` : null].filter(Boolean).join(" · ");
+    item.checked && item.checked_by ? t("shop.ticked_by", { name: item.checked_by }) : null].filter(Boolean).join(" · ");
   const tick = el("button", { type: "button", class: "tick", "aria-pressed": String(item.checked) },
     el("span", { class: "box" }),
     el("span", { class: "text" },
       el("span", { class: "name", text: item.name }),
       sub ? el("span", { class: "sub", text: sub }) : null,
-      item.verdict === false ? el("span", { class: "sub", text: `Don't buy again${item.reason ? `: ${item.reason}` : ""}` }) : null));
+      item.verdict === false
+        ? el("span", { class: "sub", text: item.reason ? t("shop.dont_buy_because", { reason: item.reason }) : t("verdict.skip") })
+        : null));
   tick.disabled = !editable;
   tick.addEventListener("click", () => {
-    shopChange(item, { checked: !item.checked }, `${item.checked ? "Untick" : "Tick"}: ${item.name}`);
+    shopChange(item, { checked: !item.checked }, t(item.checked ? "job.untick" : "job.tick", { name: item.name }));
   });
   li.append(tick);
   const side = el("span", { class: "side" });
   if (editable && item.checked && item.product_id) {
-    side.append(el("a", { class: "edit linkish", href: `#/product/${item.product_id}/price`, text: "Price" }));
+    side.append(el("a", { class: "edit linkish", href: `#/product/${item.product_id}/price`, text: t("shop.price") }));
   }
   if (editable) {
-    const edit = el("button", { type: "button", class: "edit linkish", text: "Edit" });
+    const edit = el("button", { type: "button", class: "edit linkish", text: t("common.edit") });
     edit.addEventListener("click", () => toggleShopEdit(li, item));
     side.append(edit);
   }
@@ -1331,21 +1512,21 @@ function toggleShopEdit(li, item) {
   const field = (label, name, value, extra = {}) => el("label", { class: `field${extra.wide ? " wide" : ""}` },
     el("span", { class: "label", text: label }),
     el("input", { name, value, maxlength: String(extra.max || 20), autocomplete: "off", ...(extra.list ? { list: extra.list } : {}) }));
-  if (!item.product_id) form.append(field("Text", "text", item.text, { wide: true, max: 100 }));
-  form.append(field("How many", "quantity", item.quantity),
-    field("Only at store", "store", item.store, { list: "stores", max: 100 }));
-  const remove = el("button", { type: "button", class: "btn btn--outline", text: "Remove" });
+  if (!item.product_id) form.append(field(t("shop.text"), "text", item.text, { wide: true, max: 100 }));
+  form.append(field(t("shop.how_many"), "quantity", item.quantity),
+    field(t("shop.only_at"), "store", item.store, { list: "stores", max: 100 }));
+  const remove = el("button", { type: "button", class: "btn btn--outline", text: t("common.remove") });
   remove.addEventListener("click", () => {
     shop.editing = null;
-    shopSend(`Remove: ${item.name}`, { method: "DELETE", path: `/api/shopping/${item.id}` });
+    shopSend(t("job.remove", { name: item.name }), { method: "DELETE", path: `/api/shopping/${item.id}` });
   });
-  form.append(el("div", { class: "actions" }, remove, el("button", { type: "submit", class: "btn btn--secondary", text: "Save" })));
+  form.append(el("div", { class: "actions" }, remove, el("button", { type: "submit", class: "btn btn--secondary", text: t("common.save") })));
   form.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const changes = { quantity: form.quantity.value.trim(), store: form.store.value.trim() };
     if (form.text && form.text.value.trim()) changes.text = form.text.value.trim();
     shop.editing = null;
-    shopChange(item, changes, `Change: ${item.name}`);
+    shopChange(item, changes, t("job.change", { name: item.name }));
   });
   li.after(form);
   form.querySelector("input").focus();
@@ -1404,7 +1585,7 @@ function addToShopping({ product, text, quantity = "" }) {
   if (product) body.product_id = product.id;
   else body.text = text;
   const local = shopItemLocal(clientId, { product, text, quantity });
-  shopSend(`Shopping: ${local.name}`, { method: "POST", path: "/api/shopping", body, local });
+  shopSend(t("job.shopping", { name: local.name }), { method: "POST", path: "/api/shopping", body, local });
 }
 
 // "2x" becomes "3x"; anything else that isn't a count gets one in front.
@@ -1419,8 +1600,8 @@ function raiseQuantity(quantity) {
 // A product marked "don't buy again" asks first, with the reason.
 function shoppingOk(product) {
   if (!product.rating || product.rating.buy_again) return true;
-  const why = product.rating.reason ? ` ("${product.rating.reason}")` : "";
-  return confirm(`You noted "Don't buy again" for ${product.name}${why}. Add it anyway?`);
+  const { reason } = product.rating;
+  return confirm(reason ? t("shop.ask_because", { name: product.name, reason }) : t("shop.ask", { name: product.name }));
 }
 
 async function showShop() {
@@ -1433,7 +1614,7 @@ async function showShop() {
   const start = $("#shop-scan-start");
   const usable = navigator.mediaDevices && window.isSecureContext && scannerReady();
   start.disabled = !usable;
-  start.textContent = usable ? "Scan barcodes" : window.isSecureContext ? "Scanner not available" : "Scanning needs HTTPS";
+  start.textContent = t(usable ? "shop.scan" : window.isSecureContext ? "camera.no_scanner" : "shop.needs_https");
   await loadFacets();
   if (shop.data && shop.data.list_id === state.listId) renderShop();
   else shop.data = null;
@@ -1441,7 +1622,7 @@ async function showShop() {
     await loadShop();
   } catch (err) {
     if (!err.offline) throw err;
-    showError($("#shop-message"), new Error("No connection, and this list's shopping list was never opened on this phone."));
+    showError($("#shop-message"), new Error(t("shop.never_opened")));
     return;
   }
   // Back from the form for a new product: keep scanning.
@@ -1464,7 +1645,7 @@ $("#shop-store").addEventListener("change", (ev) => {
 });
 
 $("#shop-clear").addEventListener("click", () => {
-  shopSend("Clear ticked", { method: "POST", path: "/api/shopping/clear-checked" });
+  shopSend(t("shop.clear"), { method: "POST", path: "/api/shopping/clear-checked" });
 });
 
 // Dragging by the handle: the row follows the finger past its neighbours;
@@ -1494,7 +1675,7 @@ function startDrag(ev, li) {
     li.classList.remove("is-dragging");
     shop.dragging = false;
     const keys = [...list.children].map((row) => row.dataset.key);
-    shopSend("Shopping order", { method: "PUT", path: "/api/shopping/order", body: { store: shopStore(), keys } });
+    shopSend(t("job.order"), { method: "PUT", path: "/api/shopping/order", body: { store: shopStore(), keys } });
   };
   window.addEventListener("pointermove", move, { passive: false });
   window.addEventListener("pointerup", end);
@@ -1532,7 +1713,7 @@ function renderSuggestions(q, products) {
     ...products.map((p) => {
       const b = el("button", { type: "button" },
         el("span", { class: "name", text: p.name }),
-        p.rating ? verdictWord(p.rating.buy_again) : el("span", { class: "meta", text: "Not rated" }),
+        p.rating ? verdictWord(p.rating.buy_again) : el("span", { class: "meta", text: t("verdict.not_rated") }),
         p.brand ? el("span", { class: "meta", text: p.brand }) : null);
       b.addEventListener("click", () => {
         if (!shoppingOk(p)) return;
@@ -1541,7 +1722,7 @@ function renderSuggestions(q, products) {
       return el("li", {}, b);
     }),
     (() => {
-      const b = el("button", { type: "button" }, el("span", { text: `Add "${q}" as text` }));
+      const b = el("button", { type: "button" }, el("span", { text: t("shop.add_text", { text: q }) }));
       b.addEventListener("click", pick(() => addToShopping({ text: q, quantity: form.quantity.value.trim() })));
       return el("li", {}, b);
     })(),
@@ -1597,7 +1778,7 @@ function shopNote(text, item = null) {
 async function shopScanned(code) {
   let product = await Known.byBarcode(code);
   if (!product) {
-    shopNote(`Looking up ${code}`);
+    shopNote(t("scan.looking_up", { code }));
     try {
       const r = await api("GET", `/api/lookup?barcode=${encodeURIComponent(code)}`, undefined,
         state.offline ? { retries: 0 } : {});
@@ -1621,15 +1802,16 @@ async function shopScanned(code) {
   }
   const open = (await currentShopItems(shopStore())).find((i) => !i.checked && i.product_id === product.id);
   if (open) {
-    shopNote(`${product.name} is on the list already${open.quantity ? ` (${open.quantity})` : ""}.`, open);
+    shopNote(open.quantity ? t("shop.on_list_quantity", { name: product.name, quantity: open.quantity })
+      : t("shop.on_list", { name: product.name }), open);
     return;
   }
   if (!shoppingOk(product)) {
-    shopNote(`${product.name} was not added.`);
+    shopNote(t("shop.not_added", { name: product.name }));
     return;
   }
   addToShopping({ product });
-  shopNote(`${product.name} added.`);
+  shopNote(t("shop.added", { name: product.name }));
 }
 
 $("#shop-scan-start").addEventListener("click", () => {
@@ -1645,23 +1827,23 @@ $("#shop-scan-stop").addEventListener("click", () => {
 $("#shop-scan-tick").addEventListener("click", () => {
   const item = shop.noteItem;
   if (!item) return;
-  shopChange(item, { checked: true }, `Tick: ${item.name}`);
-  shopNote(`${item.name} ticked off.`);
+  shopChange(item, { checked: true }, t("job.tick", { name: item.name }));
+  shopNote(t("shop.ticked", { name: item.name }));
 });
 $("#shop-scan-more").addEventListener("click", () => {
   const item = shop.noteItem;
   if (!item) return;
   item.quantity = raiseQuantity(item.quantity);
-  shopChange(item, { quantity: item.quantity }, `Change: ${item.name}`);
+  shopChange(item, { quantity: item.quantity }, t("job.change", { name: item.name }));
   // Another tap raises it once more.
-  shopNote(`${item.name}: ${item.quantity}.`, item);
+  shopNote(t("shop.quantity_now", { name: item.name, quantity: item.quantity }), item);
 });
 
 $("#p-shop").addEventListener("click", () => {
   const p = state.product;
   if (!p || !shoppingOk(p)) return;
   addToShopping({ product: p });
-  showInfo($("#p-message"), `${p.name} is on the shopping list.`);
+  showInfo($("#p-message"), t("product.on_shopping", { name: p.name }));
 });
 
 // ---- Two-factor login (account) -------------------------------------------
@@ -1680,32 +1862,32 @@ async function showSecurity() {
 
 function renderSecurity(sec) {
   const parts = [];
-  if (sec.totp) parts.push("authenticator app");
-  if (sec.passkeys.length) parts.push(plural(sec.passkeys.length, "passkey"));
+  if (sec.totp) parts.push(t("tf.app"));
+  if (sec.passkeys.length) parts.push(t("count.passkeys", { n: sec.passkeys.length }));
   $("#tf-status").textContent = sec.enabled
-    ? `On: ${parts.join(" and ")}. ${plural(sec.recovery_codes_left, "recovery code")} left.`
-    : "Off: the password alone logs in. Add an authenticator app or a passkey to ask for more.";
+    ? t("tf.on", { methods: andList(parts), codes: t("count.recovery_codes", { n: sec.recovery_codes_left }) })
+    : t("tf.off");
   $("#tf-totp-start").hidden = sec.totp;
   $("#tf-totp-remove").hidden = !sec.totp;
   $("#tf-codes-new").hidden = !sec.enabled;
   if (sec.totp) $("#tf-totp-setup").hidden = true;
 
   $("#tf-passkeys").replaceChildren(...sec.passkeys.map((pk) => {
-    const remove = el("button", { type: "button", class: "edit linkish", text: "Remove" });
+    const remove = el("button", { type: "button", class: "edit linkish", text: t("common.remove") });
     remove.addEventListener("click", () => securityChange("DELETE", `/api/account/passkeys/${pk.id}`,
-      `Remove the passkey "${pk.name}"?`, "Passkey removed."));
-    const used = pk.last_used_at ? ` · last used ${stamp(pk.last_used_at)}` : " · not used yet";
+      t("tf.passkey_remove_confirm", { name: pk.name }), t("tf.passkey_removed")));
+    const used = pk.last_used_at ? t("tf.passkey_used", { time: stamp(pk.last_used_at) }) : t("tf.passkey_unused");
     return el("li", {},
       el("div", { class: "head" }, el("span", { class: "word", text: pk.name }), remove),
-      el("p", { class: "stamps", text: `added ${stamp(pk.created_at)}${used}` }));
+      el("p", { class: "stamps", text: `${t("tf.passkey_added_at", { time: stamp(pk.created_at) })} · ${used}` }));
   }));
   const here = passkeysHere(sec.passkey_origin);
   $("#tf-passkey-add-row").hidden = !here;
   const note = $("#tf-passkey-note");
   note.hidden = here;
-  if (!sec.passkey_origin) note.textContent = "Passkeys are off: the admin sets BUYBUTLER_PUBLIC_URL to turn them on.";
-  else if (!window.PublicKeyCredential || !window.isSecureContext) note.textContent = "This browser can't use passkeys here.";
-  else note.textContent = `Passkeys work when Buybutler is opened at ${sec.passkey_origin}.`;
+  if (!sec.passkey_origin) note.textContent = t("tf.passkeys_off");
+  else if (!window.PublicKeyCredential || !window.isSecureContext) note.textContent = t("tf.passkeys_unsupported");
+  else note.textContent = t("tf.passkeys_at", { origin: sec.passkey_origin });
 
   if (sec.recovery_codes) {
     $("#tf-codes").hidden = false;
@@ -1718,7 +1900,7 @@ function tfPassword() {
   const password = $("#tf-password").value;
   if (!password) {
     $("#tf-password").focus();
-    throw new Error("Enter your current password first.");
+    throw new Error(t("tf.password_first"));
   }
   return password;
 }
@@ -1745,7 +1927,7 @@ async function qrImage(text) {
     await new Promise((resolve, reject) => {
       const script = el("script", { src: "/static/vendor/zxing/writer.js" });
       script.addEventListener("load", resolve);
-      script.addEventListener("error", () => reject(new Error("The QR code could not be loaded.")));
+      script.addEventListener("error", () => reject(new Error(t("tf.qr_failed"))));
       document.head.append(script);
     });
     qrImage.writer = window.ZXingWASM;
@@ -1772,7 +1954,7 @@ $("#tf-totp-start").addEventListener("click", async () => {
       img.src = await qrImage(setup.uri);
       img.hidden = false;
     } catch (err) {
-      showError(msg, new Error(`${err.message} Type in the key by hand.`));
+      showError(msg, new Error(t("tf.type_key", { error: err.message })));
     }
     $("#tf-code").focus();
   } catch (err) {
@@ -1785,17 +1967,17 @@ $("#tf-totp-confirm").addEventListener("click", async () => {
   try {
     const sec = await api("POST", "/api/account/totp/confirm", { code: $("#tf-code").value.trim() }, { retries: 0 });
     renderSecurity(sec);
-    showInfo(msg, "Authenticator app added. From now on the login asks for its code.");
+    showInfo(msg, t("tf.totp_added"));
   } catch (err) {
     showError(msg, err);
   }
 });
 
 $("#tf-totp-remove").addEventListener("click", () => securityChange("DELETE", "/api/account/totp",
-  "Remove the authenticator app?", "Authenticator app removed."));
+  t("tf.totp_remove_confirm"), t("tf.totp_removed")));
 
 $("#tf-codes-new").addEventListener("click", () => securityChange("POST", "/api/account/recovery-codes",
-  "Make new recovery codes? The old ones stop working.", "New recovery codes made; the old ones no longer work."));
+  t("tf.codes_new_confirm"), t("tf.codes_new_done")));
 
 $("#tf-passkey-add").addEventListener("click", async () => {
   const msg = $("#tf-message");
@@ -1804,10 +1986,10 @@ $("#tf-passkey-add").addEventListener("click", async () => {
     const start = await api("POST", "/api/account/passkeys/options", { password: tfPassword() }, { retries: 0 });
     $("#tf-password").value = "";
     const credential = await passkeyCreate(start.options);
-    const name = $("#tf-passkey-name").value.trim() || "Passkey";
+    const name = $("#tf-passkey-name").value.trim() || t("tf.passkey_default");
     renderSecurity(await api("POST", "/api/account/passkeys", { ticket: start.ticket, credential, name }, { retries: 0 }));
     $("#tf-passkey-name").value = "";
-    showInfo(msg, "Passkey added.");
+    showInfo(msg, t("tf.passkey_added"));
   } catch (err) {
     showError(msg, passkeyError(err));
   }
@@ -1816,9 +1998,9 @@ $("#tf-passkey-add").addEventListener("click", async () => {
 $("#tf-codes-copy").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText($("#tf-code-list").dataset.codes);
-    showInfo($("#tf-message"), "Recovery codes copied.");
+    showInfo($("#tf-message"), t("tf.codes_copied"));
   } catch {
-    showError($("#tf-message"), new Error("Copying isn't allowed here; write the codes down."));
+    showError($("#tf-message"), new Error(t("tf.codes_copy_failed")));
   }
 });
 
@@ -1830,7 +2012,7 @@ $("#user-form").addEventListener("submit", async (ev) => {
       username: form.username.value.trim(), password: form.password.value, role: form.role.value,
     });
     renderUsers(users);
-    showInfo($("#u-message"), `Added ${form.username.value.trim()}. They create their own lists, or an owner adds them to one.`);
+    showInfo($("#u-message"), t("users.added", { name: form.username.value.trim() }));
     form.reset();
   } catch (err) {
     showError($("#u-message"), err);
@@ -1841,16 +2023,16 @@ function renderOutbox(jobs) {
   $("#a-outbox-section").hidden = jobs.length === 0;
   $("#a-outbox").replaceChildren(
     ...[...jobs].sort((a, b) => a.created.localeCompare(b.created)).map((job) => {
-      const discard = el("button", { type: "button", class: "edit linkish", text: "Discard" });
+      const discard = el("button", { type: "button", class: "edit linkish", text: t("outbox.discard") });
       discard.addEventListener("click", async () => {
-        if (!confirm(`Discard "${job.label}"? It was not sent.`)) return;
+        if (!confirm(t("outbox.discard_confirm", { label: job.label }))) return;
         await Outbox.remove(job.id);
         updateOutboxBadge();
       });
       return el("li", {},
         el("div", { class: "head" }, el("span", { class: "word", text: job.label }), discard),
         el("p", { class: job.error ? "message is-error" : "stamps",
-          text: job.error ? `Not sent: ${job.error}` : `Saved ${stamp(job.created)} · waiting for the connection` }));
+          text: job.error ? t("outbox.not_sent", { error: job.error }) : t("outbox.saved", { time: stamp(job.created) }) }));
     }),
   );
 }
@@ -1873,7 +2055,7 @@ $("#password-form").addEventListener("submit", async (ev) => {
   try {
     await api("POST", "/api/session/password", { current: form.current.value, new: form.new.value });
     form.reset();
-    showInfo(msg, "Password changed. Other devices have to log in again.");
+    showInfo(msg, t("password.changed"));
   } catch (err) {
     showError(msg, err);
   }
@@ -1937,13 +2119,13 @@ function showScan() {
   renderBulk();
   if (!navigator.mediaDevices || !window.isSecureContext) {
     $("#scan-start").disabled = true;
-    $("#scan-state").textContent = "Camera needs HTTPS";
+    $("#scan-state").textContent = t("camera.needs_https");
   } else if (!scannerReady()) {
     $("#scan-start").disabled = true;
-    $("#scan-state").textContent = "Scanner not available";
+    $("#scan-state").textContent = t("camera.no_scanner");
   } else {
     $("#scan-start").disabled = false;
-    $("#scan-state").textContent = camera && camera.target === SCANNERS.scan ? "Point at a barcode" : "Camera off";
+    $("#scan-state").textContent = t(camera && camera.target === SCANNERS.scan ? "camera.point" : "camera.off");
   }
 }
 
@@ -1958,7 +2140,7 @@ async function startCamera(target = SCANNERS.scan) {
       audio: false,
     });
   } catch (err) {
-    showError(msg, new Error("No camera access. Allow it in the browser settings, or type the barcode."));
+    showError(msg, new Error(t("camera.no_access")));
     return;
   }
   if (camera) stopCamera(); // a second tap while the first was waiting for access
@@ -1969,7 +2151,7 @@ async function startCamera(target = SCANNERS.scan) {
   camera = { stream, busy: false, timer: null, target, last: null };
   $(target.start).hidden = true;
   $(target.stop).hidden = false;
-  $(target.state).textContent = "Point at a barcode";
+  $(target.state).textContent = t("camera.point");
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -2018,7 +2200,7 @@ function stopCamera() {
   if (target.frame) $(target.frame).hidden = true;
   $(target.start).hidden = false;
   $(target.stop).hidden = true;
-  $(target.state).textContent = "Camera off";
+  $(target.state).textContent = t("camera.off");
 }
 
 $("#scan-start").addEventListener("click", () => {
@@ -2060,7 +2242,7 @@ async function bulkScanned(code) {
   if (bulk.pending) return; // one card at a time
   const seen = bulk.items.find((i) => i.code === code);
   if (seen) {
-    showInfo($("#scan-message"), `${seen.name || code} is in this round already.`);
+    showInfo($("#scan-message"), t("bulk.in_round", { name: seen.name || code }));
     return;
   }
   showInfo($("#scan-message"), "");
@@ -2076,7 +2258,7 @@ async function bulkScanned(code) {
 
 function bulkSend(code) {
   const clientId = uid();
-  const job = newJob(`Add: ${code}`, [{
+  const job = newJob(t("job.add", { code }), [{
     ref: "product", method: "POST", path: "/api/products/scan", body: { client_id: clientId, barcode: code },
     list: state.listId, keep: true,
   }]);
@@ -2105,26 +2287,20 @@ function bulkSend(code) {
 function renderBulk() {
   const card = $("#bulk-card");
   card.hidden = !bulk.pending;
-  if (bulk.pending) $("#bulk-card-text").textContent = `Barcode ${bulk.pending}: add it?`;
-  const note = {
-    sending: "looking up",
-    added: "added",
-    unnamed: "added, no name found",
-    known: "in the list already",
-    queued: "sent when the connection is back",
-    failed: "not added",
-  };
+  if (bulk.pending) $("#bulk-card-text").textContent = t("bulk.card", { code: bulk.pending });
+  // sending, added, unnamed, known, queued, failed
+  const note = (status) => t(`bulk.${status}`);
   const link = (item) => {
     if (!item.productId) return null;
-    if (item.status === "unnamed") return el("a", { class: "ghost", href: `#/product/${item.productId}/edit`, text: "Name it →" });
-    if (item.status === "added") return el("a", { class: "ghost", href: `#/product/${item.productId}/rate`, text: "Rate →" });
-    return el("a", { class: "ghost", href: `#/product/${item.productId}`, text: "Open →" });
+    if (item.status === "unnamed") return el("a", { class: "ghost", href: `#/product/${item.productId}/edit`, text: t("bulk.name_it") });
+    if (item.status === "added") return el("a", { class: "ghost", href: `#/product/${item.productId}/rate`, text: t("bulk.rate") });
+    return el("a", { class: "ghost", href: `#/product/${item.productId}`, text: t("bulk.open") });
   };
   $("#bulk-title").hidden = bulk.items.length === 0;
   $("#bulk-items").hidden = bulk.items.length === 0;
   $("#bulk-items").replaceChildren(...bulk.items.map((item) => el("li", {},
     el("span", { class: "name", text: item.name || item.code }),
-    el("span", { class: "meta", text: item.error ? `${note[item.status]}: ${item.error}` : note[item.status] }),
+    el("span", { class: "meta", text: item.error ? `${note(item.status)}: ${item.error}` : note(item.status) }),
     link(item))));
 }
 
@@ -2148,7 +2324,7 @@ async function lookup(barcode) {
     go(`#/product/${known.id}`);
     return;
   }
-  showInfo(msg, `Looking up ${barcode}`);
+  showInfo(msg, t("scan.looking_up", { code: barcode }));
   try {
     const r = await api("GET", `/api/lookup?barcode=${encodeURIComponent(barcode)}`);
     if (r.product) {
@@ -2156,7 +2332,7 @@ async function lookup(barcode) {
       return;
     }
     if (!canEdit()) {
-      showInfo(msg, `${barcode} is not in ${currentList().name}, and the list is read only for you.`);
+      showInfo(msg, t("scan.read_only", { code: barcode, list: currentList().name }));
       return;
     }
     state.suggestion = r.suggestion ? { ...r.suggestion, lookup: r.lookup } : { barcode, lookup: r.lookup };
@@ -2207,24 +2383,24 @@ function renderProduct(p, note) {
   // changing or deleting the product needs the connection.
   if (p.ratings === null) for (const sel of ["#p-edit", "#p-delete"]) $(sel).hidden = true;
   $("#p-shop").hidden = !editable;
-  if (!editable && !$("#p-message").textContent) showInfo($("#p-message"), "This list is read only for you.");
+  if (!editable && !$("#p-message").textContent) showInfo($("#p-message"), t("product.read_only"));
 
   const box = $("#p-verdict");
   box.className = "verdict";
   box.replaceChildren();
   if (p.rating) {
     box.classList.add(p.rating.buy_again ? "verdict--buy" : "verdict--skip");
-    const detail = [p.rating.rated_on, p.rating.store].filter(Boolean).join(" · ");
+    const detail = [day(p.rating.rated_on), p.rating.store].filter(Boolean).join(" · ");
     box.append(
       el("i", { class: "mark" }),
       el("div", {},
-        el("p", { class: "verdict-word", text: p.rating.buy_again ? "Buy again" : "Don't buy again" }),
+        el("p", { class: "verdict-word", text: t(p.rating.buy_again ? "verdict.buy" : "verdict.skip") }),
         stars(p.rating.stars),
         p.rating.reason ? el("p", { class: "verdict-detail", text: p.rating.reason }) : null,
         el("p", { class: "verdict-detail", text: detail })),
     );
   } else {
-    box.append(el("i", { class: "mark" }), el("p", { class: "verdict-word", text: "Not rated yet" }));
+    box.append(el("i", { class: "mark" }), el("p", { class: "verdict-word", text: t("verdict.none") }));
   }
 
   const img = $("#p-image");
@@ -2235,7 +2411,7 @@ function renderProduct(p, note) {
   $("#p-name").textContent = p.name;
   $("#p-meta").textContent = [p.brand, p.quantity, p.category, p.barcode].filter(Boolean).join(" · ");
   $("#p-rate").href = `#/product/${p.id}/rate`;
-  $("#p-rate").textContent = p.rating ? "Rate again" : "Rate";
+  $("#p-rate").textContent = t(p.rating ? "product.rate_again" : "product.rate");
   $("#p-edit").href = `#/product/${p.id}/edit`;
 
   const summary = $("#p-price-summary");
@@ -2243,28 +2419,27 @@ function renderProduct(p, note) {
   if (p.price) {
     const s = p.price;
     summary.append(el("p", { class: "price-last" }, el("strong", { text: money(s.last.amount_cents) }),
-      document.createTextNode(s.last.unit_price ? ` · ${money(s.last.unit_price.amount_cents)} per ${s.last.unit_price.per}` : ""),
-      s.last.on_offer ? el("span", { class: "tag", text: "On offer" }) : null));
-    const range = [];
-    const value = (pr) => (pr.unit_price ? `${money(pr.unit_price.amount_cents)}/${pr.unit_price.per}` : money(pr.amount_cents));
+      document.createTextNode(s.last.unit_price ? ` · ${perUnit(s.last.unit_price)}` : ""),
+      s.last.on_offer ? el("span", { class: "tag", text: t("price.on_offer") }) : null));
+    const value = (pr) => (pr.unit_price ? `${money(pr.unit_price.amount_cents)}/${unitWord(pr.unit_price.per)}` : money(pr.amount_cents));
     if (s.lowest && s.highest && s.lowest.id !== s.highest.id) {
-      range.push(`Lowest ${value(s.lowest)} · highest ${value(s.highest)}`);
+      summary.append(el("p", { class: "meta", text: t("product.range", { lowest: value(s.lowest), highest: value(s.highest) }) }));
     }
-    if (range.length) summary.append(el("p", { class: "meta", text: `${range.join("")} (offers left out)` }));
   } else {
-    summary.append(el("p", { class: "meta", text: "No prices yet." }));
+    summary.append(el("p", { class: "meta", text: t("product.no_prices") }));
   }
   $("#p-prices").replaceChildren(
     ...(p.prices || []).map((pr) =>
       el("li", {},
         el("div", { class: "head" },
           el("span", { class: "word", text: priceText(pr) }),
-          pr.on_offer ? el("span", { class: "tag", text: "On offer" }) : null,
-          editable ? el("a", { class: "edit", href: `#/product/${p.id}/price/${pr.id}`, text: "Edit" }) : null),
+          pr.on_offer ? el("span", { class: "tag", text: t("price.on_offer") }) : null,
+          editable ? el("a", { class: "edit", href: `#/product/${p.id}/price/${pr.id}`, text: t("common.edit") }) : null),
         el("p", {
           class: "stamps",
-          text: [pr.bought_on, pr.store, pr.user && `by ${pr.user}`, `entered ${stamp(pr.created_at)}`,
-            pr.updated_at !== pr.created_at ? `changed ${stamp(pr.updated_at)}` : null].filter(Boolean).join(" · "),
+          text: [day(pr.bought_on), pr.store, pr.user && t("common.by", { name: pr.user }),
+            t("common.entered", { time: stamp(pr.created_at) }),
+            pr.updated_at !== pr.created_at ? t("common.changed", { time: stamp(pr.updated_at) }) : null].filter(Boolean).join(" · "),
         }))),
   );
   $("#p-add-price").href = `#/product/${p.id}/price`;
@@ -2274,28 +2449,28 @@ function renderProduct(p, note) {
     ...(p.ratings || []).map((r) =>
       el("li", {},
         el("div", { class: "head" }, verdictWord(r.buy_again), stars(r.stars),
-          editable ? el("a", { class: "edit", href: `#/product/${p.id}/rating/${r.id}`, text: "Edit" }) : null),
+          editable ? el("a", { class: "edit", href: `#/product/${p.id}/rating/${r.id}`, text: t("common.edit") }) : null),
         r.reason ? el("p", { class: "reason", text: r.reason }) : null,
-        r.photo ? el("img", { src: r.photo, alt: "Photo of this rating", loading: "lazy" }) : null,
+        r.photo ? el("img", { src: r.photo, alt: t("product.photo_alt"), loading: "lazy" }) : null,
         el("p", {
           class: "stamps",
-          text: [r.rated_on, r.store, r.user && `by ${r.user}`,
-            `entered ${stamp(r.created_at)}`,
-            r.updated_at !== r.created_at ? `changed ${stamp(r.updated_at)}` : null]
+          text: [day(r.rated_on), r.store, r.user && t("common.by", { name: r.user }),
+            t("common.entered", { time: stamp(r.created_at) }),
+            r.updated_at !== r.created_at ? t("common.changed", { time: stamp(r.updated_at) }) : null]
             .filter(Boolean).join(" · "),
         }),
       )),
   );
-  if (!p.ratings) list.append(el("li", { class: "meta", text: "The history is loaded with a connection." }));
-  else if (!p.ratings.length) list.append(el("li", { class: "meta", text: "No ratings yet." }));
+  if (!p.ratings) list.append(el("li", { class: "meta", text: t("product.history_offline") }));
+  else if (!p.ratings.length) list.append(el("li", { class: "meta", text: t("product.no_ratings") }));
 
-  $("#p-stamps").textContent = `Added ${stamp(p.created_at)} · changed ${stamp(p.updated_at)}`
-    + (p.source === "openfoodfacts" ? " · data from Open Food Facts" : "");
+  $("#p-stamps").textContent = t("product.stamps", { added: stamp(p.created_at), changed: stamp(p.updated_at) })
+    + (p.source === "openfoodfacts" ? ` · ${t("product.from_off")}` : "");
 }
 
 $("#p-delete").addEventListener("click", async () => {
   const p = state.product;
-  if (!p || !confirm(`Delete ${p.name} and all its ratings?`)) return;
+  if (!p || !confirm(t("product.delete_confirm", { name: p.name }))) return;
   try {
     await api("DELETE", `/api/products/${p.id}`);
     go("#/lists");
@@ -2319,8 +2494,8 @@ async function showProductForm(id, barcode) {
     const p = await api("GET", `/api/products/${id}`);
     state.product = p;
     show("view-product-form", "lists");
-    $("#pf-title").textContent = "Edit product";
-    $("#pf-submit").textContent = "Save";
+    $("#pf-title").textContent = t("form.edit_product");
+    $("#pf-submit").textContent = t("common.save");
     $("#pf-cancel").href = `#/product/${id}`;
     for (const k of ["name", "brand", "category", "quantity", "barcode"]) form[k].value = p[k] || "";
     form.dataset.id = id;
@@ -2331,25 +2506,18 @@ async function showProductForm(id, barcode) {
   show("view-product-form", "scan");
   delete form.dataset.id;
   delete form.dataset.created;
-  $("#pf-title").textContent = "New product";
+  $("#pf-title").textContent = t("form.new_product");
   const toShop = Boolean(barcode) && state.shopAdd === barcode;
-  $("#pf-submit").textContent = toShop ? "Save and add to shopping" : "Save and rate";
+  $("#pf-submit").textContent = t(toShop ? "form.save_and_shop" : "form.save_and_rate");
   $("#pf-cancel").href = toShop ? "#/shop" : "#/scan";
   const s = state.suggestion && state.suggestion.barcode === barcode ? state.suggestion : null;
   form.barcode.value = barcode || "";
   if (s && s.lookup === "found") {
     for (const k of ["name", "brand", "category", "quantity"]) form[k].value = s[k] || "";
     $("#pf-image-choice").hidden = !s.has_image;
-    showInfo(source, "Filled in from Open Food Facts. Check the name before saving.");
-  } else if (s) {
-    const why = {
-      not_found: "Open Food Facts doesn't know this barcode. Enter the product by hand.",
-      disabled: "The lookup is switched off. Enter the product by hand.",
-      failed: "Open Food Facts can't be reached right now. Enter the product by hand.",
-      offline: "No connection, so the barcode can't be looked up. Enter the product by hand; "
-        + "it is saved on this phone and sent later. If it is known already, the rating goes there.",
-    }[s.lookup];
-    if (why) showInfo(source, why);
+    showInfo(source, t("form.from_off"));
+  } else if (s && ["not_found", "disabled", "failed", "offline"].includes(s.lookup)) {
+    showInfo(source, t(`form.${s.lookup}`));
   }
   form.name.focus();
 }
@@ -2372,7 +2540,7 @@ $("#product-form").addEventListener("submit", async (ev) => {
     if (form.dataset.id) {
       let p = await api("PATCH", `/api/products/${form.dataset.id}`, { ...body, barcode: body.barcode || "" });
       if (file) {
-        showInfo(msg, "Uploading the picture");
+        showInfo(msg, t("form.uploading_picture"));
         p = await api("PUT", `/api/products/${p.id}/image`, await shrink(file));
       }
       go(`#/product/${p.id}`);
@@ -2383,7 +2551,7 @@ $("#product-form").addEventListener("submit", async (ev) => {
     // Scanned on the shopping list: it goes on the list in the same job,
     // before the picture, so a failed upload doesn't keep it off.
     const shopId = toShop ? uid() : null;
-    job = newJob(`New product: ${body.name}`, [
+    job = newJob(t("job.new_product", { name: body.name }), [
       // The list is fixed when the product is saved, not when it is sent.
       { ref: "product", method: "POST", path: "/api/products", body, list: state.listId },
       toShop && {
@@ -2394,16 +2562,15 @@ $("#product-form").addEventListener("submit", async (ev) => {
       file && (await blobStep("image", "/api/products/{product}/image", await shrink(file))),
     ]);
     if (toShop) {
-      showInfo(msg, "Saving");
+      showInfo(msg, t("common.saving"));
       const result = await submitJob(job);
       state.shopAdd = null;
       state.suggestion = null;
-      flash(result === "sent" ? `${body.name} is on the shopping list.`
-        : `No connection. ${body.name} and its place on the shopping list are saved on this phone and sent later.`);
+      flash(t(result === "sent" ? "product.on_shopping" : "form.queued_shop", { name: body.name }));
       go("#/shop");
       return;
     }
-    showInfo(msg, "Saving");
+    showInfo(msg, t("common.saving"));
     // Held from the start: if it ends up queued, its rating is added to the
     // same job before anything is sent.
     state.holdJob = job.id;
@@ -2413,13 +2580,13 @@ $("#product-form").addEventListener("submit", async (ev) => {
       state.holdJob = null;
       go(`#/product/${job.steps[0].id}/rate`);
     } else {
-      flash("No connection. The product is saved on this phone; rate it now, both are sent later.");
+      flash(t("form.queued"));
       go(`#/pending/${job.id}`);
     }
   } catch (err) {
     state.holdJob = null;
     if (err.partial) {
-      flash(`The product was saved, but not the picture: ${err.message}`, true);
+      flash(t("form.picture_failed", { error: err.message }), true);
       if (toShop) state.shopAdd = null;
       go(toShop ? "#/shop" : `#/product/${job.steps[0].id}/rate`);
       return;
@@ -2439,7 +2606,7 @@ function renderStars() {
       const b = el("button", {
         type: "button",
         class: chosenStars && n <= chosenStars ? "is-on" : "",
-        "aria-label": `${n} of 5 stars`,
+        "aria-label": t("stars.of_five", { n }),
         "aria-pressed": String(chosenStars === n),
         text: String(n),
       });
@@ -2451,7 +2618,7 @@ function renderStars() {
       return b;
     }),
   );
-  $("#r-stars-value").textContent = chosenStars ? `${chosenStars} of 5` : "none";
+  $("#r-stars-value").textContent = chosenStars ? t("rate.stars_value", { n: chosenStars }) : t("rate.stars_none");
 }
 
 async function showRateForm(productId, ratingId, pendingJobId = null) {
@@ -2498,7 +2665,7 @@ async function showRateForm(productId, ratingId, pendingJobId = null) {
   const rating = ratingId ? p.ratings.find((r) => r.id === ratingId) : null;
   if (ratingId && !rating) throw new ApiError(404, "rating not found");
   if (rating) {
-    $("#r-title").textContent = "Edit rating";
+    $("#r-title").textContent = t("rate.edit");
     form.dataset.rating = rating.id;
     form.querySelector(`[name=buy_again][value="${rating.buy_again ? 1 : 0}"]`).checked = true;
     form.reason.value = rating.reason;
@@ -2507,7 +2674,7 @@ async function showRateForm(productId, ratingId, pendingJobId = null) {
     chosenStars = rating.stars;
     $("#r-delete").hidden = false;
   } else {
-    $("#r-title").textContent = p.rating ? "Rate again" : "Rate";
+    $("#r-title").textContent = t(p.rating ? "product.rate_again" : "rate.title");
     delete form.dataset.rating;
     form.rated_on.value = today();
     // The store of the last rating is the likeliest one.
@@ -2524,7 +2691,7 @@ $("#rate-form").addEventListener("submit", async (ev) => {
   const msg = $("#r-message");
   const choice = form.querySelector("[name=buy_again]:checked");
   if (!choice) {
-    showError(msg, new Error("Choose Buy again or Don't buy again."));
+    showError(msg, new Error(t("rate.choose")));
     return;
   }
   const body = {
@@ -2540,7 +2707,7 @@ $("#rate-form").addEventListener("submit", async (ev) => {
       if (chosenStars === null) body.clear_stars = true;
       const r = await api("PATCH", `/api/ratings/${form.dataset.rating}`, body);
       if (file) {
-        showInfo(msg, "Uploading the photo");
+        showInfo(msg, t("rate.uploading_photo"));
         await api("PUT", `/api/ratings/${r.id}/photo`, await shrink(file));
       }
       go(`#/product/${form.dataset.product}`);
@@ -2557,30 +2724,30 @@ $("#rate-form").addEventListener("submit", async (ev) => {
       if (job) {
         job.steps.push({ ref: "rating", method: "POST", path: "/api/products/{product}/ratings", body });
         if (photo) job.steps.push(photo);
-        job.label = `${job.label}, rated`;
+        job.label = t("job.rated", { label: job.label });
         await Outbox.put(job);
         state.holdJob = null;
         syncOutbox();
-        flash(QUEUED);
+        flash(t("error.queued"));
         go("#/scan");
         return;
       }
     }
 
-    showInfo(msg, "Saving");
-    const job = newJob(`Rating: ${state.product.name}`, [
+    showInfo(msg, t("common.saving"));
+    const job = newJob(t("job.rating", { name: state.product.name }), [
       { ref: "rating", method: "POST", path: `/api/products/${form.dataset.product}/ratings`, body },
       photo,
     ]);
     if ((await submitJob(job)) === "queued") {
-      flash(QUEUED);
+      flash(t("error.queued"));
       go("#/scan");
       return;
     }
     go(`#/product/${form.dataset.product}`);
   } catch (err) {
     if (err.partial) {
-      flash(`The rating was saved, but not the photo: ${err.message}`, true);
+      flash(t("rate.photo_failed", { error: err.message }), true);
       go(`#/product/${form.dataset.product}`);
       return;
     }
@@ -2590,7 +2757,7 @@ $("#rate-form").addEventListener("submit", async (ev) => {
 
 $("#r-delete").addEventListener("click", async () => {
   const form = $("#rate-form");
-  if (!form.dataset.rating || !confirm("Delete this rating?")) return;
+  if (!form.dataset.rating || !confirm(t("rate.delete_confirm"))) return;
   try {
     await api("DELETE", `/api/ratings/${form.dataset.rating}`);
     go(`#/product/${form.dataset.product}`);
@@ -2623,14 +2790,14 @@ async function showPriceForm(productId, priceId) {
   const pr = priceId ? (p.prices || []).find((x) => x.id === priceId) : null;
   if (priceId && !pr) throw new ApiError(404, "price not found");
   if (pr) {
-    $("#pr-title").textContent = "Edit price";
+    $("#pr-title").textContent = t("price.edit");
     form.dataset.price = pr.id;
     fillPriceFields(form, pr);
     form.store.value = pr.store;
     form.bought_on.value = pr.bought_on;
     $("#pr-delete").hidden = false;
   } else {
-    $("#pr-title").textContent = "Add a price";
+    $("#pr-title").textContent = t("price.add");
     delete form.dataset.price;
     fillPriceFields(form, null);
     suggestQuantity(form, p);
@@ -2647,7 +2814,7 @@ $("#price-form").addEventListener("submit", async (ev) => {
   const msg = $("#pr-message");
   try {
     const price = readPrice(form);
-    if (!price) throw new Error("Enter the price.");
+    if (!price) throw new Error(t("price.enter"));
     const body = { ...price, store: form.store.value, bought_on: form.bought_on.value || today() };
     if (form.dataset.price) {
       if (body.quantity === null) {
@@ -2658,11 +2825,11 @@ $("#price-form").addEventListener("submit", async (ev) => {
       await api("PATCH", `/api/prices/${form.dataset.price}`, body);
     } else {
       body.client_id = uid();
-      const job = newJob(`Price: ${state.product.name}`, [
+      const job = newJob(t("job.price", { name: state.product.name }), [
         { ref: "price", method: "POST", path: `/api/products/${form.dataset.product}/prices`, body },
       ]);
       if ((await submitJob(job)) === "queued") {
-        flash(QUEUED);
+        flash(t("error.queued"));
         go("#/scan");
         return;
       }
@@ -2675,7 +2842,7 @@ $("#price-form").addEventListener("submit", async (ev) => {
 
 $("#pr-delete").addEventListener("click", async () => {
   const form = $("#price-form");
-  if (!form.dataset.price || !confirm("Delete this price?")) return;
+  if (!form.dataset.price || !confirm(t("price.delete_confirm"))) return;
   try {
     await api("DELETE", `/api/prices/${form.dataset.price}`);
     go(`#/product/${form.dataset.product}`);
@@ -2715,8 +2882,8 @@ async function showLists(params) {
     select.replaceChildren(el("option", { value: "", text: label }), ...values.map((v) => el("option", { value: v, text: v })));
     if (values.includes(current)) select.value = current;
   };
-  refill(form.store, state.facets.stores, "Every store");
-  refill(form.category, state.facets.categories, "Every category");
+  refill(form.store, state.facets.stores, t("products.every_store"));
+  refill(form.category, state.facets.categories, t("products.every_category"));
   await loadList();
 }
 
@@ -2743,7 +2910,7 @@ async function loadList() {
     products = filterKnown(copy.products, Object.fromEntries(q));
     note = ` · ${offlineNote()}`;
   }
-  $("#l-count").textContent = `${products.length} ${products.length === 1 ? "product" : "products"}${note}`;
+  $("#l-count").textContent = `${t("count.products", { n: products.length })}${note}`;
   $("#l-items").replaceChildren(
     ...products.map((p) =>
       el("li", {},
@@ -2752,7 +2919,7 @@ async function loadList() {
           el("span", { class: "text" },
             el("span", { class: "name", text: p.name }),
             el("span", { class: "sub" },
-              p.rating ? verdictWord(p.rating.buy_again) : el("span", { class: "word", text: "Not rated" }),
+              p.rating ? verdictWord(p.rating.buy_again) : el("span", { class: "word", text: t("verdict.not_rated") }),
               p.rating ? stars(p.rating.stars) : null,
               el("span", { text: [p.brand, p.rating && p.rating.store].filter(Boolean).join(" · ") }),
               p.price ? el("span", { class: "list-price", text: money(p.price.last.amount_cents) }) : null),
@@ -2798,4 +2965,5 @@ $("#filter-form").addEventListener("input", () => {
 });
 $("#filter-form").addEventListener("submit", (ev) => ev.preventDefault());
 
-route();
+// The texts first, so the page never shows one language and then another.
+useLanguage(wantedLanguage()).finally(route);

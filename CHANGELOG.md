@@ -6,6 +6,29 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Added
+- The interface speaks German, English, French, Italian, Dutch, Polish,
+  Portuguese, Spanish and Turkish. It follows the browser's language; under
+  **Account**, **Language** each user picks one, kept on the server for every
+  device (database migration 7, `PUT /api/account/language`). Messages from
+  the server are shown in the chosen language too.
+- Dates, times, prices and decimal numbers are written as the chosen language
+  writes them (`31.10.2026`, `1,29 €`); price fields take a comma or a point.
+- Product names from Open Food Facts come in the user's language when Open
+  Food Facts has one; otherwise in the language of `BUYBUTLER_OFF_LANGUAGE`,
+  as before. Answers cached by older versions keep their name.
+- "Piece" for the price per piece is also understood as `pièce`, `pieza`,
+  `pezzo`, `stuk`, `szt`, `unidade` and `adet`.
+
+### Changed
+- Updated dependencies:
+  - certifi from 2026.10.19 to 2026.10.23
+  - opentelemetry-api from 1.45.1 to 1.45.2
+  - pydantic from 2.14.1 to 2.14.2
+  - pydantic-core from 2.50.1 to 2.50.2
+
 ## [1.0.6] - 2026-10-30
 
 ### Changed
@@ -248,6 +271,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.0.6...HEAD
 [1.0.6]: https://github.com/Tom-Joad/buybutler/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/Tom-Joad/buybutler/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/Tom-Joad/buybutler/compare/v1.0.3...v1.0.4

@@ -12,13 +12,13 @@ import json
 import logging
 import re
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import httpx
 
-from . import __version__, db
+from . import __version__, auth, db
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,14 @@ class Suggestion:
     category: str
     quantity: str
     image_url: str
+    # The name in each language of the interface Open Food Facts has one
+    # for; answers cached before 1.1.0 have none.
+    names: dict[str, str] = field(default_factory=dict)
+
+    def for_language(self, language: str) -> Suggestion:
+        """The suggestion with the name in this language, when there is one."""
+        name = self.names.get(language) if language else None
+        return replace(self, name=name) if name else self
 
 
 def valid_barcode(barcode: str) -> bool:
@@ -72,6 +80,11 @@ def _parse(barcode: str, product: dict, language: str) -> Suggestion:
         category=category[:100],
         quantity=str(product.get("quantity") or "").strip()[:50],
         image_url=image,
+        names={
+            lang: name[:200]
+            for lang in auth.LANGUAGES
+            if (name := str(product.get(f"product_name_{lang}") or "").strip())
+        },
     )
 
 
@@ -129,10 +142,11 @@ class Client:
             log.debug("lookup_cached", extra={"found": found})
             return Suggestion(**data) if found and data else None
 
+        languages = sorted({self.language, *auth.LANGUAGES})
         fields = ",".join(
             [
                 "product_name",
-                f"product_name_{self.language}",
+                *(f"product_name_{lang}" for lang in languages),
                 "generic_name",
                 "brands",
                 "categories",

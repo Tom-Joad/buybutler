@@ -19,7 +19,12 @@ _BASE = {
     "cl": ("l", 0.01),
     "l": ("l", 1.0),
 }
-_PIECES = {"piece", "pieces", "pc", "pcs", "stk", "stück", "st"}
+# "Piece" in the languages of the interface, as the unit field suggests it.
+_PIECES = {
+    "piece", "pieces", "pc", "pcs", "stk", "stück", "st",
+    "pièce", "pièces", "pieza", "piezas", "pezzo", "pezzi", "stuk", "stuks",
+    "szt", "szt.", "sztuka", "sztuki", "sztuk", "unidade", "unidades", "adet",
+}
 
 
 def base_unit(quantity: float | None, unit: str) -> tuple[float, str] | None:

@@ -70,10 +70,10 @@ class Login(BaseModel):
     password: str = Field(max_length=1024)
 
 
-def _name(v: str, what: str = "name") -> str:
+def _name(v: str) -> str:
     v = _text(v, 100)
     if not v:
-        raise ValueError(f"the {what} is required")
+        raise ValueError("the name is required")
     return v
 
 
@@ -158,6 +158,11 @@ class PasswordConfirm(BaseModel):
 
 class TotpConfirm(BaseModel):
     code: str = Field(max_length=20)
+
+
+class LanguageIn(BaseModel):
+    # "" follows the browser's language.
+    language: Literal["", *auth.LANGUAGES]
 
 
 class PasskeyIn(PasskeyAnswer):
@@ -730,8 +735,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
                                 headers={"Retry-After": "60"}) from None
 
     def user_by_id(conn: sqlite3.Connection, user_id: int) -> auth.User | None:
-        row = conn.execute("SELECT id, username, role FROM users WHERE id = ?", (user_id,)).fetchone()
-        return auth.User(row["id"], row["username"], row["role"]) if row else None
+        row = conn.execute("SELECT id, username, role, language FROM users WHERE id = ?", (user_id,)).fetchone()
+        return auth.User(row["id"], row["username"], row["role"], row["language"]) if row else None
 
     @app.post("/api/session/second-factor")
     def second_factor(body: SecondFactor, request: Request, response: Response, conn: Conn) -> dict:
@@ -818,7 +823,16 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.get("/api/session")
     def me(user: CurrentUser) -> dict:
-        return {"username": user.username, "role": user.role, "currency": settings.currency}
+        return {"username": user.username, "role": user.role, "currency": settings.currency,
+                "language": user.language}
+
+    @app.put("/api/account/language")
+    def set_language(body: LanguageIn, user: CurrentUser, conn: Conn) -> dict:
+        """The interface's language for this user, on every device."""
+        conn.execute("UPDATE users SET language = ?, updated_at = ? WHERE id = ?",
+                     (body.language, db.now(), user.id))
+        log.info("language_changed", extra={"user_id": user.id, "language": body.language or "browser"})
+        return me(user_by_id(conn, user.id))
 
     def confirm_password(request: Request, conn: sqlite3.Connection, user: auth.User, password: str) -> None:
         """The current password, for changes a stolen session must not make.
@@ -1160,7 +1174,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             return {"product": None, "suggestion": None, "lookup": "failed"}
         if suggestion is None:
             return {"product": None, "suggestion": None, "lookup": "not_found"}
-        data = {k: v for k, v in suggestion.__dict__.items() if k != "image_url"}
+        suggestion = suggestion.for_language(user.language)
+        data = {k: v for k, v in suggestion.__dict__.items() if k not in ("image_url", "names")}
         data["has_image"] = bool(suggestion.image_url)
         return {"product": None, "suggestion": data, "lookup": "found"}
 
@@ -1355,6 +1370,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             try:
                 suggestion = lookup_client.lookup(conn, body.barcode)
                 lookup = "found" if suggestion else "not_found"
+                if suggestion:
+                    suggestion = suggestion.for_language(user.language)
             except (httpx.HTTPError, ValueError):
                 log.warning("lookup_failed", exc_info=True)
                 lookup = "failed"
@@ -1439,15 +1456,16 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         log.info("product_deleted", extra={"product_id": product_id, "ratings": len(photos)})
 
     async def read_picture(request: Request) -> bytes:
-        limit = settings.max_upload_mb * 1024 * 1024
+        mb = settings.max_upload_mb
+        limit = mb * 1024 * 1024
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > limit:
-            raise HTTPException(413, f"pictures may have at most {settings.max_upload_mb} MB")
+            raise HTTPException(413, f"pictures may have at most {mb} MB")
         data = bytearray()
         async for chunk in request.stream():
             data += chunk
             if len(data) > limit:
-                raise HTTPException(413, f"pictures may have at most {settings.max_upload_mb} MB")
+                raise HTTPException(413, f"pictures may have at most {mb} MB")
         try:
             images.extension(bytes(data))
         except images.ImageError as exc:

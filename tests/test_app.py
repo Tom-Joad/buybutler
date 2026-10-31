@@ -22,6 +22,7 @@ OFF_PRODUCT = {
     "product": {
         "product_name": "Natural Yoghurt",
         "product_name_de": "Naturjoghurt",
+        "product_name_fr": "Yaourt nature",
         "brands": "Example Dairy, Other",
         "categories": "Dairies, Fermented foods, Yoghurts",
         "quantity": "500 g",
@@ -120,7 +121,8 @@ def test_login_and_logout(client):
     assert r.status_code == 200
     cookie = r.headers["set-cookie"]
     assert "HttpOnly" in cookie and "SameSite=lax" in cookie
-    assert client.get("/api/session").json() == {"username": "tj", "role": "admin", "currency": "EUR"}
+    assert client.get("/api/session").json() == {"username": "tj", "role": "admin", "currency": "EUR",
+                                                  "language": ""}
     assert client.delete("/api/session", headers=H).status_code == 204
     assert client.get("/api/session").status_code == 401
 
@@ -195,6 +197,30 @@ def test_change_password_keeps_this_session_only(logged_in, settings):
     assert r.status_code == 204
     assert logged_in.get("/api/session").status_code == 200
     assert other.get("/api/session").status_code == 401
+
+
+def test_language_is_kept_per_user(logged_in, settings):
+    r = logged_in.put("/api/account/language", json={"language": "tr"}, headers=H)
+    assert r.status_code == 200 and r.json()["language"] == "tr"
+    # Another device of the same user gets it with the login.
+    other = TestClient(logged_in.app)
+    assert other.post("/api/session", json={"username": "tj", "password": PASSWORD}, headers=H).json()["language"] == "tr"
+    assert other.get("/api/session").json()["language"] == "tr"
+    # Other users keep their own.
+    second = other_user_with_list(logged_in, settings)
+    assert second.get("/api/session").json()["language"] == ""
+    # Back to the browser's language.
+    assert logged_in.put("/api/account/language", json={"language": ""}, headers=H).json()["language"] == ""
+    with db.session(settings.database) as conn:
+        row = conn.execute("SELECT language, created_at, updated_at FROM users WHERE username = 'tj'").fetchone()
+    assert row["language"] == "" and row["updated_at"] > row["created_at"]
+
+
+def test_language_must_be_one_of_the_interface(logged_in):
+    for bad in ("xx", "deu", "DE", None):
+        assert logged_in.put("/api/account/language", json={"language": bad}, headers=H).status_code == 422
+    assert logged_in.put("/api/account/language", json={"language": "de"}).status_code == 403
+    assert TestClient(logged_in.app).put("/api/account/language", json={"language": "de"}, headers=H).status_code == 401
 
 
 def test_security_headers(client):
@@ -373,6 +399,32 @@ def test_lookup_suggestion_is_cached(logged_in, fake_off):
     logged_in.get("/api/lookup", params={"barcode": "4000000000001"})
     assert len(fake_off.calls) == 1
     assert fake_off.agents[0].startswith("Buybutler/")
+
+
+def test_lookup_names_follow_the_users_language(logged_in, fake_off):
+    # The setting's language (de) without a language of the user's own.
+    logged_in.put("/api/account/language", json={"language": "fr"}, headers=H)
+    assert logged_in.get("/api/lookup", params={"barcode": "4000000000001"}).json()["suggestion"]["name"] == "Yaourt nature"
+    # No French name on Open Food Facts: the setting's language, then the main name.
+    logged_in.put("/api/account/language", json={"language": "it"}, headers=H)
+    s = logged_in.get("/api/lookup", params={"barcode": "4000000000001"}).json()["suggestion"]
+    assert s["name"] == "Naturjoghurt" and "names" not in s
+    assert len(fake_off.calls) == 1
+    assert "product_name_tr" in fake_off.calls[0]
+    logged_in.put("/api/account/language", json={"language": "fr"}, headers=H)
+    assert scan(logged_in, "4000000000001").json()["name"] == "Yaourt nature"
+
+
+def test_suggestions_cached_before_names_still_work(logged_in, settings, fake_off):
+    with db.session(settings.database) as conn:
+        conn.execute(
+            "INSERT INTO off_cache (barcode, found, data, fetched_at) VALUES (?, 1, ?, ?)",
+            ("4000000000005", json.dumps({"barcode": "4000000000005", "name": "Old", "brand": "", "category": "",
+                                          "quantity": "", "image_url": ""}), db.now()),
+        )
+    logged_in.put("/api/account/language", json={"language": "fr"}, headers=H)
+    assert logged_in.get("/api/lookup", params={"barcode": "4000000000005"}).json()["suggestion"]["name"] == "Old"
+    assert fake_off.calls == []
 
 
 def test_lookup_not_found_and_failure(logged_in, fake_off):
@@ -572,6 +624,12 @@ def test_unit_price_rounds_half_up(logged_in):
     assert pr["unit_price"] == {"amount_cents": 873, "per": "kg"}
 
 
+def test_piece_in_the_interface_languages():
+    from buybutler import prices
+    for unit in ("piece", "Stück", "pièce", "pieza", "pezzo", "stuk", "szt", "unidade", "adet"):
+        assert prices.base_unit(6, unit) == (6, "piece"), unit
+
+
 def test_price_summary_without_quantities(logged_in):
     p = make_product(logged_in)
     add_price(logged_in, p["id"], amount_cents=300, bought_on="2026-01-01")
@@ -632,6 +690,25 @@ def test_migration_from_the_first_schema(settings):
     conn = sqlite3.connect(settings.database)
     assert conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0] == 0
     conn.close()
+
+
+def test_users_from_before_languages_follow_the_browser(settings):
+    # A 1.0 database (schema 6) with a user; migration 7 adds the language.
+    conn = sqlite3.connect(settings.database)
+    conn.executescript("".join(db.MIGRATIONS[:6]) + "PRAGMA user_version = 6;")
+    conn.close()
+    conn = sqlite3.connect(settings.database)
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role, created_at, updated_at) VALUES (?, ?, 'admin', ?, ?)",
+        ("old", auth.hash_password(PASSWORD), "2026-10-01T00:00:00.000Z", "2026-10-01T00:00:00.000Z"),
+    )
+    conn.commit()
+    conn.close()
+    assert db.migrate(settings.database) == (6, len(db.MIGRATIONS))
+    with db.session(settings.database) as conn:
+        row = conn.execute("SELECT language, updated_at FROM users WHERE username = 'old'").fetchone()
+        assert auth.authenticate(conn, "old", PASSWORD).language == ""
+    assert row["language"] == "" and row["updated_at"] == "2026-10-01T00:00:00.000Z"
 
 
 # ---- repeated requests (client_id) -----------------------------------------
