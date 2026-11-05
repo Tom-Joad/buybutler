@@ -9,7 +9,7 @@
   <Support>https://github.com/Tom-Joad/buybutler</Support>
   <Project>https://github.com/Tom-Joad/buybutler</Project>
   <Icon>https://raw.githubusercontent.com/Tom-Joad/unraid-templates/main/icons/buybutler.png</Icon>
-  <TemplateURL>https://raw.githubusercontent.com/Tom-Joad/buybutler/main/unraid/Buybutler.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/Tom-Joad/buybutler/main/unraid/buybutler.xml</TemplateURL>
   <Overview>
     Remember which groceries to buy again and which not, with a reason, 1 to 5 stars, the store,
     the date, a photo and optionally the price paid. Scan the barcode with the phone camera; product names and pictures come
@@ -28,7 +28,6 @@
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User that owns the files (nobody)" Type="Variable" Display="always" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group of the files (users)" Type="Variable" Display="always" Required="true" Mask="false">100</Config>
   <Config Name="UMASK" Target="UMASK" Default="002" Mode="" Description="002: new files are writable for the users group" Type="Variable" Display="advanced" Required="false" Mask="false">002</Config>
-  <Config Name="TZ" Target="TZ" Default="Europe/Berlin" Mode="" Description="Time zone: decides the date a rating gets by default, and the log" Type="Variable" Display="always" Required="false" Mask="false">Europe/Berlin</Config>
   <Config Name="Product language" Target="BUYBUTLER_OFF_LANGUAGE" Default="de" Mode="" Description="Language of product names from Open Food Facts (two letters)" Type="Variable" Display="always" Required="false" Mask="false">de</Config>
   <Config Name="Currency" Target="BUYBUTLER_CURRENCY" Default="EUR" Mode="" Description="Currency of all prices, a three-letter code such as EUR or CHF" Type="Variable" Display="always" Required="false" Mask="false">EUR</Config>
   <Config Name="Public URL" Target="BUYBUTLER_PUBLIC_URL" Default="" Mode="" Description="The address Buybutler is opened at, such as https://buybutler.example.com; needed for passkeys" Type="Variable" Display="always" Required="false" Mask="false"></Config>

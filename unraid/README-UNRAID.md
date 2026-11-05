@@ -39,7 +39,6 @@ set **Trusted proxies** to the proxy's address.
 |---|---|
 | Product language | `de` gives German product names where Open Food Facts has them |
 | Web interface port | When 8080 is taken on the server |
-| TZ | Decides the date a new rating gets |
 
 ## Updates
 
@@ -56,5 +55,10 @@ Without it, run `buybutler backup` in the console first.
 
 ## Template changes
 
-The template carries its `TemplateURL`, so Unraid picks up changes to it by
-itself.
+Unraid doesn't update the template of an installed container. A setting
+added in a later version shows up in new installs; for an installed container,
+add it with **Edit** → **Add another Path, Port, Variable, Label or Device**
+when you need it.
+
+The template has no `TZ` field: Unraid sets `TZ` from its own time zone (**Settings** → **Date and Time**),
+which decides the date a new rating gets.
