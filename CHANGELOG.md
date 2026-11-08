@@ -6,7 +6,7 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
-## [Unreleased]
+## [1.2.0] - 2026-11-08
 
 ### Added
 - Access keys for other programs, such as a recipe book putting a recipe's
@@ -299,6 +299,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
 - Installable on the phone's home screen.
 
 [Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.1.2...HEAD
+[1.2.0]: https://github.com/Tom-Joad/buybutler/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/Tom-Joad/buybutler/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Tom-Joad/buybutler/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Tom-Joad/buybutler/compare/v1.0.6...v1.1.0
