@@ -710,6 +710,9 @@ function go(hash) {
 }
 
 function show(id, nav) {
+  // Secrets shown once (a new access key, recovery codes) don't stay in the
+  // page once the account is left.
+  if (id !== "view-account") forgetSecrets();
   for (const v of views) v.hidden = v.id !== id;
   $("#bar").hidden = id === "view-login";
   $("#listbar").hidden = id === "view-login" || !state.lists || state.lists.length === 0;
@@ -1849,10 +1852,18 @@ $("#p-shop").addEventListener("click", () => {
 
 // ---- Two-factor login (account) -------------------------------------------
 
+function forgetSecrets() {
+  $("#tf-codes").hidden = true;
+  $("#tf-code-list").replaceChildren();
+  delete $("#tf-code-list").dataset.codes;
+  $("#tk-new").hidden = true;
+  $("#tk-value").textContent = "";
+}
+
 async function showSecurity() {
   $("#tf-password").value = "";
   $("#tf-totp-setup").hidden = true;
-  $("#tf-codes").hidden = true;
+  forgetSecrets();
   showInfo($("#tf-message"), "");
   try {
     renderSecurity(await api("GET", "/api/account/security"));
@@ -1999,7 +2010,6 @@ $("#tf-passkey-add").addEventListener("click", async () => {
 // ---- Access keys for other programs ----------------------------------------
 
 async function showTokens() {
-  $("#tk-new").hidden = true;
   $("#tk-password").value = "";
   showInfo($("#tk-message"), "");
   // Only lists the user may change can get a key.
@@ -2022,6 +2032,7 @@ function renderTokens(keys) {
       try {
         renderTokens((await api("DELETE", `/api/account/tokens/${k.id}`, undefined, { retries: 0 })).tokens);
         $("#tk-new").hidden = true;
+        $("#tk-value").textContent = "";
         showInfo($("#tk-message"), t("tokens.removed"));
       } catch (err) {
         showError($("#tk-message"), err);

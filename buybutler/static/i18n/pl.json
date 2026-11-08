@@ -336,7 +336,7 @@
   "tf.codes_new_done": "Utworzono nowe kody odzyskiwania; stare już nie działają.",
 
   "tokens.title": "Klucze dostępu",
-  "tokens.help": "Pozwala innemu programowi, np. książka kucharska, dodawać pozycje do listy zakupów jednej listy. Klucz działa bez drugiego składnika: przechowuj go jak hasło i usuń, gdy program już go nie potrzebuje.",
+  "tokens.help": "Pozwala innemu programowi, np. książce kucharskiej, dodawać pozycje do listy zakupów jednej listy. Klucz działa bez drugiego etapu: przechowuj go jak hasło i usuń, gdy program już go nie potrzebuje.",
   "tokens.name": "Nazwa nowego klucza",
   "tokens.name_example": "Książka kucharska",
   "tokens.list": "Lista zakupów listy",

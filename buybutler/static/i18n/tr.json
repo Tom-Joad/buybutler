@@ -336,7 +336,7 @@
   "tf.codes_new_done": "Yeni kurtarma kodları oluşturuldu; eskileri artık çalışmıyor.",
 
   "tokens.title": "Erişim anahtarları",
-  "tokens.help": "tarif defteri gibi başka bir programın bir listenin alışveriş listesine öğe eklemesini sağlar. Anahtar ikinci faktör olmadan çalışır: bir parola gibi saklayın ve program artık ihtiyaç duymadığında kaldırın.",
+  "tokens.help": "Tarif defteri gibi başka bir programın, bir listenin alışveriş listesine öğe eklemesini sağlar. Anahtar ikinci adım olmadan çalışır: bir parola gibi saklayın ve program artık ihtiyaç duymadığında kaldırın.",
   "tokens.name": "Yeni anahtarın adı",
   "tokens.name_example": "Tarif defteri",
   "tokens.list": "Alışveriş listesi",

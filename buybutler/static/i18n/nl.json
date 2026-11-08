@@ -336,7 +336,7 @@
   "tf.codes_new_done": "Nieuwe herstelcodes gemaakt; de oude werken niet meer.",
 
   "tokens.title": "Toegangssleutels",
-  "tokens.help": "Hiermee kan een ander programma, zoals een receptenboek, artikelen op de boodschappenlijst van een lijst zetten. Een sleutel werkt zonder de tweede factor: bewaar hem als een wachtwoord en verwijder hem als het programma hem niet meer nodig heeft.",
+  "tokens.help": "Hiermee kan een ander programma, zoals een receptenboek, artikelen op de boodschappenlijst van een lijst zetten. Een sleutel werkt zonder tweede stap: bewaar hem als een wachtwoord en verwijder hem als het programma hem niet meer nodig heeft.",
   "tokens.name": "Naam van de nieuwe sleutel",
   "tokens.name_example": "Receptenboek",
   "tokens.list": "Boodschappenlijst van",
