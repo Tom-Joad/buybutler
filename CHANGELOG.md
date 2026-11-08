@@ -16,8 +16,13 @@ Before 1.0.0, a minor version could need action; its entry says so.
   migration 8). Programs send it as `Authorization: Bearer bbt_…` to
   `GET /api/v1/shopping` (the list's name and items) and
   `POST /api/v1/shopping` (add up to 100 items as text with a quantity). A
-  key stops working when it is removed, or when its user may no longer edit
-  the list.
+  key stops working when it is removed, when its user may no longer edit
+  the list, or when the user's password changes (their own change or an
+  admin's reset removes all their keys). An item already open on the list
+  with the same text and the same or no quantity isn't added again, so a
+  repeated request is harmless; items can also carry a `client_id`. Other
+  programs fill a list up to 500 items, a request is taken whole or not at
+  all, and unknown keys are throttled per client address.
 
 ## [1.1.2] - 2026-11-06
 

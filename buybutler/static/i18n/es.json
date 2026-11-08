@@ -291,7 +291,7 @@
   "password.current": "Contraseña actual",
   "password.new": "Contraseña nueva, al menos 10 caracteres",
   "password.submit": "Cambiar contraseña",
-  "password.changed": "Contraseña cambiada. Los demás dispositivos deben iniciar sesión de nuevo.",
+  "password.changed": "Contraseña cambiada. Los demás dispositivos deben iniciar sesión de nuevo; tus claves de acceso se han eliminado.",
 
   "tf.title": "Inicio de sesión en dos pasos",
   "tf.password": "Contraseña actual, necesaria para cambios aquí",
@@ -363,7 +363,7 @@
   "users.add": "Añadir usuario",
   "users.added": "{name} añadido. Crea sus propias listas, o un propietario lo añade a una.",
   "users.new_password": "Contraseña nueva",
-  "users.new_password_prompt": "Contraseña nueva para {name} (al menos 10 caracteres). Sus sesiones terminan.",
+  "users.new_password_prompt": "Contraseña nueva para {name} (al menos 10 caracteres). Sus sesiones terminan y sus claves de acceso se eliminan.",
   "users.password_changed": "Contraseña de {name} cambiada.",
   "users.reset_2fa": "Restablecer dos pasos",
   "users.reset_2fa_confirm": "¿Quitar la app de autenticación, las llaves de acceso y los códigos de recuperación de {name}? Volverá a bastar con su contraseña.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "como máximo {TOKENS_MAX} claves de acceso por usuario",
     "missing or unknown access key": "falta la clave de acceso o es desconocida",
     "the name must have 1 to {NAME_MAX} characters": "el nombre debe tener de 1 a {NAME_MAX} caracteres",
-    "the text is required": "falta el texto"
+    "the text is required": "falta el texto",
+    "the shopping list is full: at most {ITEMS_MAX} items": "la lista de la compra está llena: como máximo {ITEMS_MAX} artículos",
+    "too many unknown access keys, try again later": "demasiadas claves de acceso desconocidas, inténtalo más tarde"
   }
 }

@@ -291,7 +291,7 @@
   "password.current": "Password attuale",
   "password.new": "Nuova password, almeno 10 caratteri",
   "password.submit": "Cambia password",
-  "password.changed": "Password cambiata. Gli altri dispositivi devono accedere di nuovo.",
+  "password.changed": "Password cambiata. Gli altri dispositivi devono accedere di nuovo; le tue chiavi di accesso sono state rimosse.",
 
   "tf.title": "Accesso a due fattori",
   "tf.password": "Password attuale, necessaria per le modifiche qui",
@@ -363,7 +363,7 @@
   "users.add": "Aggiungi utente",
   "users.added": "{name} aggiunto. Crea le proprie liste, oppure un proprietario lo aggiunge a una lista.",
   "users.new_password": "Nuova password",
-  "users.new_password_prompt": "Nuova password per {name} (almeno 10 caratteri). Le sue sessioni terminano.",
+  "users.new_password_prompt": "Nuova password per {name} (almeno 10 caratteri). Le sue sessioni terminano e le sue chiavi di accesso vengono rimosse.",
   "users.password_changed": "Password di {name} cambiata.",
   "users.reset_2fa": "Reimposta due fattori",
   "users.reset_2fa_confirm": "Rimuovere l'app di autenticazione, le passkey e i codici di recupero di {name}? Basterà di nuovo la sua password.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "al massimo {TOKENS_MAX} chiavi di accesso per utente",
     "missing or unknown access key": "chiave di accesso mancante o sconosciuta",
     "the name must have 1 to {NAME_MAX} characters": "il nome deve avere da 1 a {NAME_MAX} caratteri",
-    "the text is required": "il testo è obbligatorio"
+    "the text is required": "il testo è obbligatorio",
+    "the shopping list is full: at most {ITEMS_MAX} items": "la lista della spesa è piena: al massimo {ITEMS_MAX} articoli",
+    "too many unknown access keys, try again later": "troppe chiavi di accesso sconosciute, riprova più tardi"
   }
 }

@@ -280,7 +280,8 @@ a recipe book adding the ingredients of a recipe. Under **Account**, **Access ke
 list and confirm with your password. The key (`bbt_…`) is shown once; copy it
 into the other program. It works without the second factor, so keep it like
 a password and remove it when it is no longer needed. It also stops working
-when you leave the list or become a viewer there.
+when you leave the list or become a viewer there, and every key of a user is
+removed when their password changes.
 
 The program sends the key in the `Authorization` header:
 
@@ -293,7 +294,15 @@ curl -H "Authorization: Bearer bbt_…" -H "Content-Type: application/json" \
 
 `GET` answers with the list's name and its items (`name`, `quantity`,
 `checked`); `POST` adds up to 100 items as text (at most 100 characters,
-the quantity at most 20) in the name of the key's user.
+the quantity at most 20) in the name of the key's user. It answers with
+`added` (new lines) and `existing` (items on the list already). An open item of the
+same text (case and spaces don't count) with the same quantity, or with none,
+stands for a new one, so sending a request again adds nothing and two recipes
+needing milk give one line; an empty quantity is filled in, a different one
+gets its own line. An item can carry a `client_id` (16 to 64 letters, digits
+and dashes); the same ID sent again is the same item. Other programs fill a
+list up to 500 items, and a request is taken whole or not at all. After 20
+unknown keys from one address in 15 minutes, that address waits.
 
 ## Offline
 

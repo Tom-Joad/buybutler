@@ -170,6 +170,8 @@ class TokenIn(BaseModel):
 
 
 class ProgramItem(BaseModel):
+    # Optional: the same client_id sent again is the same item.
+    client_id: ClientId = None
     text: str
     quantity: str = ""
 
@@ -626,6 +628,9 @@ def service_worker() -> bytes:
 def create_app(settings: config.Settings | None = None, transport: httpx.BaseTransport | None = None) -> FastAPI:
     settings = settings or config.load()
     throttle = auth.LoginThrottle()
+    # Unknown access keys per client address: keys can't be guessed, but a
+    # program sending a wrong one in a loop shouldn't fill the log.
+    key_throttle = auth.LoginThrottle(per_client=20)
     lookup_client = off.Client(settings.off_language, transport=transport)
 
     @asynccontextmanager
@@ -1015,11 +1020,17 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return {"tokens": tokens.listing(conn, user.id)}
 
     def program_dep(request: Request, conn: Conn) -> tokens.Access:
+        client = client_of(request)
+        wait, attempt = key_throttle.begin(None, client)
+        if attempt is None:
+            raise HTTPException(429, "too many unknown access keys, try again later",
+                                headers={"Retry-After": str(wait)})
         scheme, _, token = request.headers.get("authorization", "").partition(" ")
         access = tokens.check(conn, token.strip()) if scheme.lower() == "bearer" else None
         if access is None:
-            log.warning("token_refused", extra={"client": client_of(request)})
+            log.warning("token_refused", extra={"client": client})
             raise HTTPException(401, "missing or unknown access key", headers={"WWW-Authenticate": "Bearer"})
+        key_throttle.succeeded(None, client, attempt)
         return access
 
     Program = Annotated[tokens.Access, Depends(program_dep)]
@@ -1035,11 +1046,20 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.post(PROGRAM_API + "shopping", status_code=201)
     def program_add(body: ProgramItems, access: Program, conn: Conn) -> dict:
+        """Items on the list already (same text, same or no quantity) aren't
+        added again, so a repeated request is harmless. All or none: an
+        error leaves the list as it was."""
+        added = 0
         for item in body.items:
-            shopping.add(conn, access.list_id, access.user_id, None, None, item.text, item.quantity, "")
+            try:
+                _, created = shopping.add(conn, access.list_id, access.user_id, item.client_id, None, item.text,
+                                          item.quantity, "", program=True)
+            except shopping.ShoppingError as exc:
+                raise HTTPException(409, str(exc)) from None
+            added += created
         log.info("shopping_items_added_by_program", extra={"list_id": access.list_id, "token_id": access.token_id,
-                                                           "items": len(body.items)})
-        return {"list": access.list_name, "added": len(body.items)}
+                                                           "items": len(body.items), "added": added})
+        return {"list": access.list_name, "added": added, "existing": len(body.items) - added}
 
     # ---- lists ---------------------------------------------------------------
 

@@ -291,7 +291,7 @@
   "password.current": "Current password",
   "password.new": "New password, at least 10 characters",
   "password.submit": "Change password",
-  "password.changed": "Password changed. Other devices have to log in again.",
+  "password.changed": "Password changed. Other devices have to log in again; your access keys were removed.",
 
   "tf.title": "Two-factor login",
   "tf.password": "Current password, needed for changes here",
@@ -363,7 +363,7 @@
   "users.add": "Add user",
   "users.added": "Added {name}. They create their own lists, or an owner adds them to one.",
   "users.new_password": "New password",
-  "users.new_password_prompt": "New password for {name} (at least 10 characters). Their sessions end.",
+  "users.new_password_prompt": "New password for {name} (at least 10 characters). Their sessions end and their access keys are removed.",
   "users.password_changed": "Password of {name} changed.",
   "users.reset_2fa": "Reset two-factor",
   "users.reset_2fa_confirm": "Remove the authenticator app, passkeys and recovery codes of {name}? Their password alone logs in again.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "at most {TOKENS_MAX} access keys per user",
     "missing or unknown access key": "missing or unknown access key",
     "the name must have 1 to {NAME_MAX} characters": "the name must have 1 to {NAME_MAX} characters",
-    "the text is required": "the text is required"
+    "the text is required": "the text is required",
+    "the shopping list is full: at most {ITEMS_MAX} items": "the shopping list is full: at most {ITEMS_MAX} items",
+    "too many unknown access keys, try again later": "too many unknown access keys, try again later"
   }
 }

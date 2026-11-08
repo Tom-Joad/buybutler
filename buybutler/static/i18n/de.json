@@ -291,7 +291,7 @@
   "password.current": "Aktuelles Passwort",
   "password.new": "Neues Passwort, mindestens 10 Zeichen",
   "password.submit": "Passwort ändern",
-  "password.changed": "Passwort geändert. Andere Geräte müssen sich neu anmelden.",
+  "password.changed": "Passwort geändert. Andere Geräte müssen sich neu anmelden; deine Zugangsschlüssel wurden entfernt.",
 
   "tf.title": "Zwei-Faktor-Anmeldung",
   "tf.password": "Aktuelles Passwort, nötig für Änderungen hier",
@@ -363,7 +363,7 @@
   "users.add": "Benutzer anlegen",
   "users.added": "{name} angelegt. Eigene Listen legt der Benutzer selbst an, oder ein Besitzer fügt ihn einer Liste hinzu.",
   "users.new_password": "Neues Passwort",
-  "users.new_password_prompt": "Neues Passwort für {name} (mindestens 10 Zeichen). Alle Sitzungen enden.",
+  "users.new_password_prompt": "Neues Passwort für {name} (mindestens 10 Zeichen). Alle Sitzungen enden, die Zugangsschlüssel werden entfernt.",
   "users.password_changed": "Passwort von {name} geändert.",
   "users.reset_2fa": "Zwei-Faktor zurücksetzen",
   "users.reset_2fa_confirm": "Authenticator-App, Passkeys und Wiederherstellungscodes von {name} entfernen? Dann meldet das Passwort allein wieder an.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "höchstens {TOKENS_MAX} Zugangsschlüssel pro Benutzer",
     "missing or unknown access key": "Zugangsschlüssel fehlt oder ist unbekannt",
     "the name must have 1 to {NAME_MAX} characters": "der Name muss 1 bis {NAME_MAX} Zeichen haben",
-    "the text is required": "der Text fehlt"
+    "the text is required": "der Text fehlt",
+    "the shopping list is full: at most {ITEMS_MAX} items": "die Einkaufsliste ist voll: höchstens {ITEMS_MAX} Artikel",
+    "too many unknown access keys, try again later": "zu viele unbekannte Zugangsschlüssel, bitte später erneut versuchen"
   }
 }

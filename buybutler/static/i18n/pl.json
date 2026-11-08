@@ -291,7 +291,7 @@
   "password.current": "Obecne hasło",
   "password.new": "Nowe hasło, co najmniej 10 znaków",
   "password.submit": "Zmień hasło",
-  "password.changed": "Hasło zmienione. Inne urządzenia muszą zalogować się ponownie.",
+  "password.changed": "Hasło zmienione. Inne urządzenia muszą zalogować się ponownie; twoje klucze dostępu zostały usunięte.",
 
   "tf.title": "Logowanie dwuetapowe",
   "tf.password": "Obecne hasło, potrzebne do zmian tutaj",
@@ -363,7 +363,7 @@
   "users.add": "Dodaj użytkownika",
   "users.added": "Dodano {name}. Ten użytkownik tworzy własne listy albo właściciel dodaje go do listy.",
   "users.new_password": "Nowe hasło",
-  "users.new_password_prompt": "Nowe hasło dla {name} (co najmniej 10 znaków). Wszystkie sesje zostaną zakończone.",
+  "users.new_password_prompt": "Nowe hasło dla {name} (co najmniej 10 znaków). Wszystkie sesje zostaną zakończone, a klucze dostępu usunięte.",
   "users.password_changed": "Zmieniono hasło użytkownika {name}.",
   "users.reset_2fa": "Resetuj dwa etapy",
   "users.reset_2fa_confirm": "Usunąć aplikację uwierzytelniającą, klucze dostępu i kody odzyskiwania użytkownika {name}? Znowu wystarczy samo hasło.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "najwyżej {TOKENS_MAX} kluczy dostępu na użytkownika",
     "missing or unknown access key": "brak klucza dostępu lub klucz nieznany",
     "the name must have 1 to {NAME_MAX} characters": "nazwa musi mieć od 1 do {NAME_MAX} znaków",
-    "the text is required": "brak tekstu"
+    "the text is required": "brak tekstu",
+    "the shopping list is full: at most {ITEMS_MAX} items": "lista zakupów jest pełna: najwyżej {ITEMS_MAX} pozycji",
+    "too many unknown access keys, try again later": "zbyt wiele nieznanych kluczy dostępu, spróbuj później"
   }
 }

@@ -5,10 +5,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from buybutler import db
+from buybutler import db, shopping
 
 from .test_app import H, PASSWORD, client, fake_off, logged_in, settings  # noqa: F401
-from .test_lists import add_user, home, login, share  # noqa: F401
+from .test_lists import ADMIN, add_user, home, login, share  # noqa: F401
 
 
 def make_token(c, list_id: int, password: str = PASSWORD, name: str = "Recipe book"):
@@ -37,7 +37,7 @@ def test_program_adds_to_the_shopping_list(logged_in, home):
     token = make_token(logged_in, home).json()["token"]
     p = program(logged_in.app, token)
     r = p.post("/api/v1/shopping", json={"items": [{"text": "Mehl", "quantity": "400 g"}, {"text": "Eier", "quantity": "4"}]})
-    assert r.status_code == 201 and r.json() == {"list": "Home", "added": 2}
+    assert r.status_code == 201 and r.json() == {"list": "Home", "added": 2, "existing": 0}
     seen = p.get("/api/v1/shopping").json()
     assert seen["list"] == "Home"
     assert [(i["name"], i["quantity"], i["checked"]) for i in seen["items"]] == [("Mehl", "400 g", False), ("Eier", "4", False)]
@@ -88,3 +88,85 @@ def test_keys_of_other_users_stay_apart(logged_in, settings, home):
     assert sam.get("/api/account/tokens").json() == {"tokens": []}
     assert sam.delete(f"/api/account/tokens/{r.json()['tokens'][0]['id']}", headers=H).status_code == 404
     assert make_token(sam, home).status_code == 404
+
+
+def test_password_change_removes_the_keys(logged_in, settings, home):
+    p = program(logged_in.app, make_token(logged_in, home).json()["token"])
+    r = logged_in.post("/api/session/password", json={"current": PASSWORD, "new": "another long password"}, headers=H)
+    assert r.status_code == 204
+    assert p.get("/api/v1/shopping").status_code == 401
+    assert logged_in.get("/api/account/tokens").json() == {"tokens": []}
+
+
+def test_admin_password_reset_removes_the_keys(logged_in, settings, home):
+    add_user(settings, "sam")
+    share(logged_in, home, "sam", "editor")
+    sam = login(logged_in.app, "sam")
+    p = program(logged_in.app, make_token(sam, home).json()["token"])
+    mine = program(logged_in.app, make_token(logged_in, home).json()["token"])
+    users = logged_in.get("/api/users").json()["users"]
+    sam_id = next(u["id"] for u in users if u["username"] == "sam")
+    r = logged_in.post(f"/api/users/{sam_id}/password", json={"password": "a brand new one", **ADMIN}, headers=H)
+    assert r.status_code == 204
+    assert p.get("/api/v1/shopping").status_code == 401
+    # The admin's own key stays.
+    assert mine.get("/api/v1/shopping").status_code == 200
+
+
+def test_repeated_request_adds_nothing(logged_in, home):
+    p = program(logged_in.app, make_token(logged_in, home).json()["token"])
+    body = {"items": [{"text": "Mehl", "quantity": "400 g"}, {"text": "Eier", "quantity": "4",
+                                                              "client_id": "recipe-17-eggs-0001"}]}
+    assert p.post("/api/v1/shopping", json=body).json() == {"list": "Home", "added": 2, "existing": 0}
+    assert p.post("/api/v1/shopping", json=body).json() == {"list": "Home", "added": 0, "existing": 2}
+    assert len(p.get("/api/v1/shopping").json()["items"]) == 2
+
+
+def test_same_text_goes_on_the_list_once(logged_in, home):
+    p = program(logged_in.app, make_token(logged_in, home).json()["token"])
+    p.post("/api/v1/shopping", json={"items": [{"text": "Milch"}]})
+    # The same text in other case and spacing, now with a quantity: filled in.
+    r = p.post("/api/v1/shopping", json={"items": [{"text": " milch ", "quantity": "1 l"}, {"text": "MILCH"}]})
+    assert r.json() == {"list": "Home", "added": 0, "existing": 2}
+    # Another quantity gets its own line, so it isn't lost.
+    assert p.post("/api/v1/shopping", json={"items": [{"text": "Milch", "quantity": "500 ml"}]}).json()["added"] == 1
+    items = p.get("/api/v1/shopping").json()["items"]
+    assert [(i["name"], i["quantity"]) for i in items] == [("Milch", "1 l"), ("Milch", "500 ml")]
+    # A ticked line doesn't count: it is bought already.
+    first = logged_in.get("/api/shopping").json()["items"][0]["id"]
+    logged_in.patch(f"/api/shopping/{first}", json={"checked": True}, headers=H)
+    assert p.post("/api/v1/shopping", json={"items": [{"text": "Milch", "quantity": "1 l"}]}).json()["added"] == 1
+
+
+def test_item_id_of_another_list_is_refused(logged_in, home):
+    other = logged_in.post("/api/lists", json={"name": "Office"}, headers=H).json()["id"]
+    p = program(logged_in.app, make_token(logged_in, home).json()["token"])
+    q = program(logged_in.app, make_token(logged_in, other).json()["token"])
+    item = {"text": "Kaffee", "client_id": "recipe-17-coffee-001"}
+    assert p.post("/api/v1/shopping", json={"items": [item]}).status_code == 201
+    assert q.post("/api/v1/shopping", json={"items": [item]}).status_code == 409
+
+
+def test_full_list_takes_nothing_more(logged_in, home, monkeypatch):
+    monkeypatch.setattr(shopping, "ITEMS_MAX", 3)
+    p = program(logged_in.app, make_token(logged_in, home).json()["token"])
+    p.post("/api/v1/shopping", json={"items": [{"text": "a"}, {"text": "b"}]})
+    # All or none: c would fit, d not, so neither is added.
+    r = p.post("/api/v1/shopping", json={"items": [{"text": "c"}, {"text": "d"}]})
+    assert r.status_code == 409 and "full" in r.json()["detail"]
+    assert len(p.get("/api/v1/shopping").json()["items"]) == 2
+    # What is on the list already can still be sent.
+    assert p.post("/api/v1/shopping", json={"items": [{"text": "a"}, {"text": "c"}]}).json()["added"] == 1
+
+
+def test_unknown_keys_are_throttled(logged_in, home):
+    good = program(logged_in.app, make_token(logged_in, home).json()["token"])
+    for _ in range(5):
+        assert good.get("/api/v1/shopping").status_code == 200
+    bad = program(logged_in.app, "bbt_nothing")
+    for _ in range(20):
+        assert bad.get("/api/v1/shopping").status_code == 401
+    r = bad.get("/api/v1/shopping")
+    assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
+    # From the same address, a good key waits too.
+    assert good.get("/api/v1/shopping").status_code == 429
