@@ -291,7 +291,7 @@
   "password.current": "Palavra-passe atual",
   "password.new": "Nova palavra-passe, pelo menos 10 caracteres",
   "password.submit": "Mudar a palavra-passe",
-  "password.changed": "Palavra-passe alterada. Os outros dispositivos têm de iniciar sessão de novo.",
+  "password.changed": "Palavra-passe alterada. Os outros dispositivos têm de iniciar sessão de novo; as suas chaves de acesso foram removidas.",
 
   "tf.title": "Início de sessão em dois passos",
   "tf.password": "Palavra-passe atual, necessária para alterações aqui",
@@ -363,7 +363,7 @@
   "users.add": "Adicionar utilizador",
   "users.added": "{name} adicionado. Cria as suas próprias listas, ou um proprietário adiciona-o a uma.",
   "users.new_password": "Nova palavra-passe",
-  "users.new_password_prompt": "Nova palavra-passe para {name} (pelo menos 10 caracteres). As suas sessões terminam.",
+  "users.new_password_prompt": "Nova palavra-passe para {name} (pelo menos 10 caracteres). As suas sessões terminam e as suas chaves de acesso são removidas.",
   "users.password_changed": "Palavra-passe de {name} alterada.",
   "users.reset_2fa": "Repor dois passos",
   "users.reset_2fa_confirm": "Remover a app de autenticação, as chaves de acesso e os códigos de recuperação de {name}? Volta a bastar a palavra-passe.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "no máximo {TOKENS_MAX} chaves de acesso por utilizador",
     "missing or unknown access key": "chave de acesso em falta ou desconhecida",
     "the name must have 1 to {NAME_MAX} characters": "o nome deve ter de 1 a {NAME_MAX} caracteres",
-    "the text is required": "o texto é obrigatório"
+    "the text is required": "o texto é obrigatório",
+    "the shopping list is full: at most {ITEMS_MAX} items": "a lista de compras está cheia: no máximo {ITEMS_MAX} artigos",
+    "too many unknown access keys, try again later": "demasiadas chaves de acesso desconhecidas, tente mais tarde"
   }
 }

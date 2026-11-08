@@ -291,7 +291,7 @@
   "password.current": "Mot de passe actuel",
   "password.new": "Nouveau mot de passe, au moins 10 caractères",
   "password.submit": "Changer le mot de passe",
-  "password.changed": "Mot de passe changé. Les autres appareils doivent se reconnecter.",
+  "password.changed": "Mot de passe changé. Les autres appareils doivent se reconnecter ; vos clés d’accès ont été supprimées.",
 
   "tf.title": "Connexion à deux facteurs",
   "tf.password": "Mot de passe actuel, nécessaire pour les changements ici",
@@ -363,7 +363,7 @@
   "users.add": "Ajouter l'utilisateur",
   "users.added": "{name} ajouté. Il crée ses propres listes, ou un propriétaire l'ajoute à une liste.",
   "users.new_password": "Nouveau mot de passe",
-  "users.new_password_prompt": "Nouveau mot de passe pour {name} (au moins 10 caractères). Ses sessions prennent fin.",
+  "users.new_password_prompt": "Nouveau mot de passe pour {name} (au moins 10 caractères). Ses sessions prennent fin et ses clés d’accès sont supprimées.",
   "users.password_changed": "Mot de passe de {name} changé.",
   "users.reset_2fa": "Réinitialiser les deux facteurs",
   "users.reset_2fa_confirm": "Retirer l'application d'authentification, les clés d'accès et les codes de secours de {name} ? Son mot de passe suffira de nouveau pour se connecter.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "au plus {TOKENS_MAX} clés d’accès par utilisateur",
     "missing or unknown access key": "clé d’accès manquante ou inconnue",
     "the name must have 1 to {NAME_MAX} characters": "le nom doit comporter de 1 à {NAME_MAX} caractères",
-    "the text is required": "le texte est obligatoire"
+    "the text is required": "le texte est obligatoire",
+    "the shopping list is full: at most {ITEMS_MAX} items": "la liste de courses est pleine : au plus {ITEMS_MAX} articles",
+    "too many unknown access keys, try again later": "trop de clés d’accès inconnues, réessayez plus tard"
   }
 }
