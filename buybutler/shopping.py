@@ -20,6 +20,8 @@ from . import db
 TEXT_MAX = 100
 QUANTITY_MAX = 20
 STORE_MAX = 100
+# Items on one list that other programs may fill up to.
+ITEMS_MAX = 500
 # Remembered places per list and store.
 ORDER_MAX = 2000
 
@@ -111,10 +113,17 @@ def stores(conn: sqlite3.Connection, list_id: int) -> list[str]:
 
 
 def add(conn: sqlite3.Connection, list_id: int, user_id: int, client_id: str | None, product_id: int | None,
-        text: str, quantity: str, store: str) -> tuple[str, bool]:
+        text: str, quantity: str, store: str, program: bool = False) -> tuple[str, bool]:
     """Add an item. Returns (client_id, created). A product that is on the
     list already and not ticked is returned instead of added twice; a
-    repeated request (same client_id) returns the first."""
+    repeated request (same client_id) returns the first.
+
+    For another program (`program`), the same goes for a text: an open
+    entry of the same text with the same quantity, or with none, stands for
+    it (an empty quantity is filled in). So a repeated request adds nothing,
+    and two recipes needing "Milk" give one line. A different quantity gets
+    its own line, so nothing is lost. The list takes at most ITEMS_MAX items
+    this way."""
     if client_id:
         row = conn.execute("SELECT list_id FROM shopping_items WHERE client_id = ?", (client_id,)).fetchone()
         if row is not None:
@@ -133,6 +142,15 @@ def add(conn: sqlite3.Connection, list_id: int, user_id: int, client_id: str | N
         text = ""
     elif not text:
         raise ShoppingError("a product or a text is required")
+    elif program:
+        same = _open_text(conn, list_id, text, quantity)
+        if same is not None:
+            if quantity and not same["quantity"]:
+                conn.execute("UPDATE shopping_items SET quantity = ?, updated_at = ? WHERE id = ?",
+                             (quantity, db.now(), same["id"]))
+            return same["client_id"], False
+        if conn.execute("SELECT COUNT(*) FROM shopping_items WHERE list_id = ?", (list_id,)).fetchone()[0] >= ITEMS_MAX:
+            raise ShoppingError(f"the shopping list is full: at most {ITEMS_MAX} items")
     client_id = client_id or str(uuid.uuid4())
     stamp = db.now()
     conn.execute(
@@ -141,6 +159,21 @@ def add(conn: sqlite3.Connection, list_id: int, user_id: int, client_id: str | N
         (list_id, product_id, text, quantity, store, user_id, client_id, stamp, stamp),
     )
     return client_id, True
+
+
+def _open_text(conn: sqlite3.Connection, list_id: int, text: str, quantity: str) -> sqlite3.Row | None:
+    """An open entry of this text (compared like item_key) whose quantity is
+    the same, or empty, or the given one is empty."""
+    key = item_key(None, text)
+    for row in conn.execute(
+        "SELECT id, client_id, text, quantity FROM shopping_items"
+        " WHERE list_id = ? AND product_id IS NULL AND checked_at IS NULL ORDER BY id",
+        (list_id,),
+    ):
+        if item_key(None, row["text"]) == key and (not quantity or not row["quantity"]
+                                                   or row["quantity"].casefold() == quantity.casefold()):
+            return row
+    return None
 
 
 def _row(conn: sqlite3.Connection, list_id: int, client_id: str) -> sqlite3.Row:

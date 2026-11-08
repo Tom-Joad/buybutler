@@ -291,7 +291,7 @@
   "password.current": "Huidig wachtwoord",
   "password.new": "Nieuw wachtwoord, minstens 10 tekens",
   "password.submit": "Wachtwoord wijzigen",
-  "password.changed": "Wachtwoord gewijzigd. Andere apparaten moeten opnieuw inloggen.",
+  "password.changed": "Wachtwoord gewijzigd. Andere apparaten moeten opnieuw inloggen; je toegangssleutels zijn verwijderd.",
 
   "tf.title": "Inloggen in twee stappen",
   "tf.password": "Huidig wachtwoord, nodig voor wijzigingen hier",
@@ -363,7 +363,7 @@
   "users.add": "Gebruiker toevoegen",
   "users.added": "{name} toegevoegd. Deze gebruiker maakt eigen lijsten, of een eigenaar voegt hem aan een lijst toe.",
   "users.new_password": "Nieuw wachtwoord",
-  "users.new_password_prompt": "Nieuw wachtwoord voor {name} (minstens 10 tekens). Alle sessies eindigen.",
+  "users.new_password_prompt": "Nieuw wachtwoord voor {name} (minstens 10 tekens). Alle sessies eindigen en de toegangssleutels worden verwijderd.",
   "users.password_changed": "Wachtwoord van {name} gewijzigd.",
   "users.reset_2fa": "Twee stappen resetten",
   "users.reset_2fa_confirm": "De authenticator-app, passkeys en herstelcodes van {name} verwijderen? Dan logt het wachtwoord alleen weer in.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "hoogstens {TOKENS_MAX} toegangssleutels per gebruiker",
     "missing or unknown access key": "toegangssleutel ontbreekt of is onbekend",
     "the name must have 1 to {NAME_MAX} characters": "de naam moet 1 tot {NAME_MAX} tekens hebben",
-    "the text is required": "de tekst ontbreekt"
+    "the text is required": "de tekst ontbreekt",
+    "the shopping list is full: at most {ITEMS_MAX} items": "de boodschappenlijst is vol: hoogstens {ITEMS_MAX} artikelen",
+    "too many unknown access keys, try again later": "te veel onbekende toegangssleutels, probeer het later opnieuw"
   }
 }

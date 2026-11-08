@@ -291,7 +291,7 @@
   "password.current": "Geçerli parola",
   "password.new": "Yeni parola, en az 10 karakter",
   "password.submit": "Parolayı değiştir",
-  "password.changed": "Parola değiştirildi. Diğer cihazların yeniden giriş yapması gerekir.",
+  "password.changed": "Parola değiştirildi. Diğer cihazların yeniden giriş yapması gerekir; erişim anahtarlarınız kaldırıldı.",
 
   "tf.title": "İki adımlı giriş",
   "tf.password": "Geçerli parola, buradaki değişiklikler için gerekli",
@@ -363,7 +363,7 @@
   "users.add": "Kullanıcı ekle",
   "users.added": "{name} eklendi. Kendi listelerini oluşturur ya da bir sahip onu bir listeye ekler.",
   "users.new_password": "Yeni parola",
-  "users.new_password_prompt": "{name} için yeni parola (en az 10 karakter). Tüm oturumları sona erer.",
+  "users.new_password_prompt": "{name} için yeni parola (en az 10 karakter). Tüm oturumları sona erer ve erişim anahtarları kaldırılır.",
   "users.password_changed": "{name} kullanıcısının parolası değiştirildi.",
   "users.reset_2fa": "İki adımı sıfırla",
   "users.reset_2fa_confirm": "{name} kullanıcısının doğrulama uygulaması, geçiş anahtarları ve kurtarma kodları kaldırılsın mı? Giriş için yine yalnızca parola yeterli olur.",
@@ -439,6 +439,8 @@
     "at most {TOKENS_MAX} access keys per user": "kullanıcı başına en fazla {TOKENS_MAX} erişim anahtarı",
     "missing or unknown access key": "erişim anahtarı eksik veya bilinmiyor",
     "the name must have 1 to {NAME_MAX} characters": "ad 1 ile {NAME_MAX} karakter arasında olmalı",
-    "the text is required": "metin gerekli"
+    "the text is required": "metin gerekli",
+    "the shopping list is full: at most {ITEMS_MAX} items": "alışveriş listesi dolu: en fazla {ITEMS_MAX} ürün",
+    "too many unknown access keys, try again later": "çok fazla bilinmeyen erişim anahtarı, daha sonra tekrar deneyin"
   }
 }

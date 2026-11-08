@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif args.action == "passwd":
                     row = _user(conn, args.name)
                     auth.set_password(conn, row["id"], _password(args))
-                    print(f"Password of {row['username']} changed; their sessions have ended.")
+                    print(f"Password of {row['username']} changed; their sessions and access keys have ended.")
                 elif args.action == "list":
                     rows = conn.execute("SELECT id, username, role, created_at FROM users ORDER BY id").fetchall()
                     if not rows:

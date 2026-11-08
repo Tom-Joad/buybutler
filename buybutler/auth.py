@@ -130,13 +130,15 @@ def create_list(conn: sqlite3.Connection, owner_id: int, name: str) -> int:
 
 
 def set_password(conn: sqlite3.Connection, user_id: int, password: str) -> None:
-    """Change a password and end every session of that user."""
+    """Change a password, end every session of that user and remove their
+    access keys: a key made with the old password must not outlast it."""
     check_password(password)
     conn.execute(
         "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
         (hash_password(password), db.now(), user_id),
     )
     conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM api_tokens WHERE user_id = ?", (user_id,))
 
 
 def authenticate(conn: sqlite3.Connection, username: str, password: str) -> User | None:
