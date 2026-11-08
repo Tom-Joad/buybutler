@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import __version__, auth, config, db, images, lists, off, prices, shopping, twofactor
+from . import __version__, auth, config, db, images, lists, off, prices, shopping, tokens, twofactor
 
 log = logging.getLogger("buybutler")
 
@@ -33,6 +33,9 @@ LIST_HEADER = "x-buybutler-list"
 # link on another site can't set it, which is what stops cross-site
 # requests; the SameSite cookie is the second line.
 CSRF_HEADER = "x-buybutler"
+# The API for other programs: an access key in the Authorization header,
+# never a cookie, so a browser can't be tricked into sending it.
+PROGRAM_API = "/api/v1/"
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": (
@@ -158,6 +161,34 @@ class PasswordConfirm(BaseModel):
 
 class TotpConfirm(BaseModel):
     code: str = Field(max_length=20)
+
+
+class TokenIn(BaseModel):
+    name: str = Field(max_length=tokens.NAME_MAX)
+    list_id: int
+    password: str = Field(max_length=1024)
+
+
+class ProgramItem(BaseModel):
+    text: str
+    quantity: str = ""
+
+    @field_validator("text")
+    @classmethod
+    def _text(cls, v: str) -> str:
+        v = _text(v, shopping.TEXT_MAX)
+        if not v:
+            raise ValueError("the text is required")
+        return v
+
+    @field_validator("quantity")
+    @classmethod
+    def _quantity(cls, v: str) -> str:
+        return _text(v, shopping.QUANTITY_MAX)
+
+
+class ProgramItems(BaseModel):
+    items: list[ProgramItem] = Field(min_length=1, max_length=100)
 
 
 class LanguageIn(BaseModel):
@@ -619,7 +650,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
-        if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CSRF_HEADER) != "1":
+        if (request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CSRF_HEADER) != "1"
+                and not request.url.path.startswith(PROGRAM_API)):
             response: Response = JSONResponse({"detail": "missing request header"}, status_code=403)
         else:
             response = await call_next(request)
@@ -955,6 +987,59 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             raise HTTPException(409, "recovery codes come with an authenticator app or a passkey")
         log.info("recovery_codes_renewed", extra={"user_id": user.id})
         return security_json(conn, user, twofactor.new_recovery_codes(conn, user.id))
+
+    # ---- access keys for other programs ----------------------------------------
+
+    @app.get("/api/account/tokens")
+    def get_tokens(user: CurrentUser, conn: Conn) -> dict:
+        return {"tokens": tokens.listing(conn, user.id)}
+
+    @app.post("/api/account/tokens", status_code=201)
+    def create_token(body: TokenIn, request: Request, user: CurrentUser, conn: Conn) -> dict:
+        """A key is a way in without the second factor, so it needs the password."""
+        confirm_password(request, conn, user, body.password)
+        if _list_role(conn, user, body.list_id) not in ("owner", "editor"):
+            raise HTTPException(404, "list not found")
+        try:
+            token = tokens.create(conn, user.id, body.list_id, body.name)
+        except tokens.TokenError as exc:
+            raise HTTPException(400, str(exc)) from None
+        log.info("token_created", extra={"user_id": user.id, "list_id": body.list_id})
+        return {"token": token, "tokens": tokens.listing(conn, user.id)}
+
+    @app.delete("/api/account/tokens/{token_id}")
+    def revoke_token(token_id: int, user: CurrentUser, conn: Conn) -> dict:
+        if not tokens.revoke(conn, user.id, token_id):
+            raise HTTPException(404, "access key not found")
+        log.info("token_revoked", extra={"user_id": user.id, "token_id": token_id})
+        return {"tokens": tokens.listing(conn, user.id)}
+
+    def program_dep(request: Request, conn: Conn) -> tokens.Access:
+        scheme, _, token = request.headers.get("authorization", "").partition(" ")
+        access = tokens.check(conn, token.strip()) if scheme.lower() == "bearer" else None
+        if access is None:
+            log.warning("token_refused", extra={"client": client_of(request)})
+            raise HTTPException(401, "missing or unknown access key", headers={"WWW-Authenticate": "Bearer"})
+        return access
+
+    Program = Annotated[tokens.Access, Depends(program_dep)]
+
+    @app.get(PROGRAM_API + "shopping")
+    def program_shopping(access: Program, conn: Conn) -> dict:
+        """The list's name and what is on its shopping list now."""
+        items = shopping.items(conn, access.list_id, "", _image_url)
+        return {
+            "list": access.list_name,
+            "items": [{"name": i["name"], "quantity": i["quantity"], "checked": i["checked"]} for i in items],
+        }
+
+    @app.post(PROGRAM_API + "shopping", status_code=201)
+    def program_add(body: ProgramItems, access: Program, conn: Conn) -> dict:
+        for item in body.items:
+            shopping.add(conn, access.list_id, access.user_id, None, None, item.text, item.quantity, "")
+        log.info("shopping_items_added_by_program", extra={"list_id": access.list_id, "token_id": access.token_id,
+                                                           "items": len(body.items)})
+        return {"list": access.list_name, "added": len(body.items)}
 
     # ---- lists ---------------------------------------------------------------
 

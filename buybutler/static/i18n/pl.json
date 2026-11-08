@@ -335,6 +335,25 @@
   "tf.codes_new_confirm": "Utworzyć nowe kody odzyskiwania? Stare przestaną działać.",
   "tf.codes_new_done": "Utworzono nowe kody odzyskiwania; stare już nie działają.",
 
+  "tokens.title": "Klucze dostępu",
+  "tokens.help": "Pozwala innemu programowi, np. książka kucharska, dodawać pozycje do listy zakupów jednej listy. Klucz działa bez drugiego składnika: przechowuj go jak hasło i usuń, gdy program już go nie potrzebuje.",
+  "tokens.name": "Nazwa nowego klucza",
+  "tokens.name_example": "Książka kucharska",
+  "tokens.list": "Lista zakupów listy",
+  "tokens.password": "Obecne hasło",
+  "tokens.password_first": "Najpierw wpisz obecne hasło.",
+  "tokens.create": "Utwórz klucz dostępu",
+  "tokens.created": "Klucz dostępu utworzony.",
+  "tokens.shown_once": "Skopiuj teraz klucz do drugiego programu; jest pokazywany tylko ten jeden raz.",
+  "tokens.copy": "Kopiuj klucz",
+  "tokens.copied": "Klucz skopiowany.",
+  "tokens.copy_failed": "Kopiowanie się nie udało; zaznacz klucz i skopiuj go ręcznie.",
+  "tokens.for_list": "dla {list}",
+  "tokens.used": "ostatnio użyty {time}",
+  "tokens.unused": "jeszcze nieużyty",
+  "tokens.remove_confirm": "Usunąć klucz dostępu „{name}”? Program, który go używa, straci dostęp do listy.",
+  "tokens.removed": "Klucz dostępu usunięty.",
+
   "users.title": "Użytkownicy",
   "users.password": "Twoje hasło, potrzebne do zmian tutaj",
   "users.password_first": "Najpierw wpisz swoje hasło.",
@@ -415,6 +434,11 @@
     "wrong user name or password": "błędna nazwa użytkownika lub hasło",
     "you can't delete yourself": "nie możesz usunąć samego siebie",
     "Field required": "pole wymagane",
-    "String should have at most {max_length} characters": "najwyżej {max_length} znaków"
+    "String should have at most {max_length} characters": "najwyżej {max_length} znaków",
+    "access key not found": "nie znaleziono klucza dostępu",
+    "at most {TOKENS_MAX} access keys per user": "najwyżej {TOKENS_MAX} kluczy dostępu na użytkownika",
+    "missing or unknown access key": "brak klucza dostępu lub klucz nieznany",
+    "the name must have 1 to {NAME_MAX} characters": "nazwa musi mieć od 1 do {NAME_MAX} znaków",
+    "the text is required": "brak tekstu"
   }
 }

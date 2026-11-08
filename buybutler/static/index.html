@@ -495,6 +495,31 @@
       <button class="btn btn--outline" id="tf-codes-new" type="button" data-i18n="tf.codes_new" hidden>New recovery codes</button>
       <p class="message" id="tf-message" role="alert"></p>
     </div>
+    <!-- Keys for other programs, such as a recipe book. -->
+    <div id="tk-section" class="stack">
+      <h2 class="section-title" data-i18n="tokens.title">Access keys</h2>
+      <p class="meta" data-i18n="tokens.help">Lets another program, such as a recipe book, put items on the shopping list of one list. A key works without the second factor: keep it like a password, and remove it when the program no longer needs it.</p>
+      <ul class="history" id="tk-keys"></ul>
+      <label class="field">
+        <span class="label" data-i18n="tokens.name">Name of the new key</span>
+        <input id="tk-name" maxlength="60" placeholder="Recipe book" data-i18n-placeholder="tokens.name_example">
+      </label>
+      <label class="field">
+        <span class="label" data-i18n="tokens.list">Shopping list of</span>
+        <select id="tk-list"></select>
+      </label>
+      <label class="field">
+        <span class="label" data-i18n="tokens.password">Current password</span>
+        <input id="tk-password" type="password" autocomplete="current-password">
+      </label>
+      <button class="btn btn--secondary" id="tk-create" type="button" data-i18n="tokens.create">Create an access key</button>
+      <div class="stack" id="tk-new" hidden>
+        <p class="meta" data-i18n="tokens.shown_once">Copy the key into the other program now; it is shown only this once.</p>
+        <p class="secret" id="tk-value"></p>
+        <button class="btn btn--outline" id="tk-copy" type="button" data-i18n="tokens.copy">Copy the key</button>
+      </div>
+      <p class="message" id="tk-message" role="alert"></p>
+    </div>
     <div id="a-users-section" hidden>
       <h2 class="section-title" data-i18n="users.title">Users</h2>
       <label class="field">

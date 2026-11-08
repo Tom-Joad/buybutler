@@ -335,6 +335,25 @@
   "tf.codes_new_confirm": "Neue Wiederherstellungscodes erstellen? Die alten gelten dann nicht mehr.",
   "tf.codes_new_done": "Neue Wiederherstellungscodes erstellt; die alten gelten nicht mehr.",
 
+  "tokens.title": "Zugangsschlüssel",
+  "tokens.help": "Damit kann ein anderes Programm, zum Beispiel ein Rezeptbuch, Einträge auf die Einkaufsliste einer Liste setzen. Ein Schlüssel funktioniert ohne zweiten Faktor: wie ein Passwort aufbewahren und entfernen, wenn das Programm ihn nicht mehr braucht.",
+  "tokens.name": "Name des neuen Schlüssels",
+  "tokens.name_example": "Rezeptbuch",
+  "tokens.list": "Einkaufsliste von",
+  "tokens.password": "Aktuelles Passwort",
+  "tokens.password_first": "Bitte zuerst das aktuelle Passwort eingeben.",
+  "tokens.create": "Zugangsschlüssel erstellen",
+  "tokens.created": "Zugangsschlüssel erstellt.",
+  "tokens.shown_once": "Den Schlüssel jetzt in das andere Programm kopieren; er wird nur dieses eine Mal gezeigt.",
+  "tokens.copy": "Schlüssel kopieren",
+  "tokens.copied": "Schlüssel kopiert.",
+  "tokens.copy_failed": "Kopieren ging nicht; den Schlüssel markieren und von Hand kopieren.",
+  "tokens.for_list": "für {list}",
+  "tokens.used": "zuletzt benutzt {time}",
+  "tokens.unused": "noch nicht benutzt",
+  "tokens.remove_confirm": "Den Zugangsschlüssel „{name}“ entfernen? Das Programm, das ihn nutzt, erreicht die Liste dann nicht mehr.",
+  "tokens.removed": "Zugangsschlüssel entfernt.",
+
   "users.title": "Benutzer",
   "users.password": "Dein Passwort, nötig für Änderungen hier",
   "users.password_first": "Gib zuerst dein Passwort ein.",
@@ -415,6 +434,11 @@
     "wrong user name or password": "falscher Benutzername oder falsches Passwort",
     "you can't delete yourself": "du kannst dich nicht selbst löschen",
     "Field required": "Pflichtfeld",
-    "String should have at most {max_length} characters": "höchstens {max_length} Zeichen"
+    "String should have at most {max_length} characters": "höchstens {max_length} Zeichen",
+    "access key not found": "Zugangsschlüssel nicht gefunden",
+    "at most {TOKENS_MAX} access keys per user": "höchstens {TOKENS_MAX} Zugangsschlüssel pro Benutzer",
+    "missing or unknown access key": "Zugangsschlüssel fehlt oder ist unbekannt",
+    "the name must have 1 to {NAME_MAX} characters": "der Name muss 1 bis {NAME_MAX} Zeichen haben",
+    "the text is required": "der Text fehlt"
   }
 }

@@ -335,6 +335,25 @@
   "tf.codes_new_confirm": "Yeni kurtarma kodları oluşturulsun mu? Eskileri çalışmayı bırakır.",
   "tf.codes_new_done": "Yeni kurtarma kodları oluşturuldu; eskileri artık çalışmıyor.",
 
+  "tokens.title": "Erişim anahtarları",
+  "tokens.help": "tarif defteri gibi başka bir programın bir listenin alışveriş listesine öğe eklemesini sağlar. Anahtar ikinci faktör olmadan çalışır: bir parola gibi saklayın ve program artık ihtiyaç duymadığında kaldırın.",
+  "tokens.name": "Yeni anahtarın adı",
+  "tokens.name_example": "Tarif defteri",
+  "tokens.list": "Alışveriş listesi",
+  "tokens.password": "Mevcut parola",
+  "tokens.password_first": "Önce mevcut parolanızı girin.",
+  "tokens.create": "Erişim anahtarı oluştur",
+  "tokens.created": "Erişim anahtarı oluşturuldu.",
+  "tokens.shown_once": "Anahtarı şimdi diğer programa kopyalayın; yalnızca bu bir kez gösterilir.",
+  "tokens.copy": "Anahtarı kopyala",
+  "tokens.copied": "Anahtar kopyalandı.",
+  "tokens.copy_failed": "Kopyalanamadı; anahtarı seçip elle kopyalayın.",
+  "tokens.for_list": "{list} için",
+  "tokens.used": "son kullanım {time}",
+  "tokens.unused": "henüz kullanılmadı",
+  "tokens.remove_confirm": "“{name}” erişim anahtarı kaldırılsın mı? Onu kullanan program listeye artık erişemez.",
+  "tokens.removed": "Erişim anahtarı kaldırıldı.",
+
   "users.title": "Kullanıcılar",
   "users.password": "Parolanız, buradaki değişiklikler için gerekli",
   "users.password_first": "Önce parolanızı girin.",
@@ -415,6 +434,11 @@
     "wrong user name or password": "kullanıcı adı ya da parola yanlış",
     "you can't delete yourself": "kendinizi silemezsiniz",
     "Field required": "zorunlu alan",
-    "String should have at most {max_length} characters": "en fazla {max_length} karakter"
+    "String should have at most {max_length} characters": "en fazla {max_length} karakter",
+    "access key not found": "erişim anahtarı bulunamadı",
+    "at most {TOKENS_MAX} access keys per user": "kullanıcı başına en fazla {TOKENS_MAX} erişim anahtarı",
+    "missing or unknown access key": "erişim anahtarı eksik veya bilinmiyor",
+    "the name must have 1 to {NAME_MAX} characters": "ad 1 ile {NAME_MAX} karakter arasında olmalı",
+    "the text is required": "metin gerekli"
   }
 }

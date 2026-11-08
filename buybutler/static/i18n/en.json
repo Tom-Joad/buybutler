@@ -335,6 +335,25 @@
   "tf.codes_new_confirm": "Make new recovery codes? The old ones stop working.",
   "tf.codes_new_done": "New recovery codes made; the old ones no longer work.",
 
+  "tokens.title": "Access keys",
+  "tokens.help": "Lets another program, such as a recipe book, put items on the shopping list of one list. A key works without the second factor: keep it like a password, and remove it when the program no longer needs it.",
+  "tokens.name": "Name of the new key",
+  "tokens.name_example": "Recipe book",
+  "tokens.list": "Shopping list of",
+  "tokens.password": "Current password",
+  "tokens.password_first": "Enter your current password first.",
+  "tokens.create": "Create an access key",
+  "tokens.created": "Access key created.",
+  "tokens.shown_once": "Copy the key into the other program now; it is shown only this once.",
+  "tokens.copy": "Copy the key",
+  "tokens.copied": "Key copied.",
+  "tokens.copy_failed": "Copying didn't work; select the key and copy it by hand.",
+  "tokens.for_list": "for {list}",
+  "tokens.used": "last used {time}",
+  "tokens.unused": "not used yet",
+  "tokens.remove_confirm": "Remove the access key “{name}”? The program using it can no longer reach the list.",
+  "tokens.removed": "Access key removed.",
+
   "users.title": "Users",
   "users.password": "Your password, needed for changes here",
   "users.password_first": "Enter your password first.",
@@ -415,6 +434,11 @@
     "wrong user name or password": "wrong user name or password",
     "you can't delete yourself": "you can't delete yourself",
     "Field required": "Field required",
-    "String should have at most {max_length} characters": "String should have at most {max_length} characters"
+    "String should have at most {max_length} characters": "String should have at most {max_length} characters",
+    "access key not found": "access key not found",
+    "at most {TOKENS_MAX} access keys per user": "at most {TOKENS_MAX} access keys per user",
+    "missing or unknown access key": "missing or unknown access key",
+    "the name must have 1 to {NAME_MAX} characters": "the name must have 1 to {NAME_MAX} characters",
+    "the text is required": "the text is required"
   }
 }
