@@ -335,6 +335,25 @@
   "tf.codes_new_confirm": "Nieuwe herstelcodes maken? De oude werken dan niet meer.",
   "tf.codes_new_done": "Nieuwe herstelcodes gemaakt; de oude werken niet meer.",
 
+  "tokens.title": "Toegangssleutels",
+  "tokens.help": "Hiermee kan een ander programma, zoals een receptenboek, artikelen op de boodschappenlijst van een lijst zetten. Een sleutel werkt zonder de tweede factor: bewaar hem als een wachtwoord en verwijder hem als het programma hem niet meer nodig heeft.",
+  "tokens.name": "Naam van de nieuwe sleutel",
+  "tokens.name_example": "Receptenboek",
+  "tokens.list": "Boodschappenlijst van",
+  "tokens.password": "Huidig wachtwoord",
+  "tokens.password_first": "Vul eerst je huidige wachtwoord in.",
+  "tokens.create": "Toegangssleutel maken",
+  "tokens.created": "Toegangssleutel gemaakt.",
+  "tokens.shown_once": "Kopieer de sleutel nu naar het andere programma; hij wordt alleen deze ene keer getoond.",
+  "tokens.copy": "Sleutel kopiëren",
+  "tokens.copied": "Sleutel gekopieerd.",
+  "tokens.copy_failed": "Kopiëren lukte niet; selecteer de sleutel en kopieer hem met de hand.",
+  "tokens.for_list": "voor {list}",
+  "tokens.used": "laatst gebruikt {time}",
+  "tokens.unused": "nog niet gebruikt",
+  "tokens.remove_confirm": "Toegangssleutel ‘{name}’ verwijderen? Het programma dat hem gebruikt, kan de lijst dan niet meer bereiken.",
+  "tokens.removed": "Toegangssleutel verwijderd.",
+
   "users.title": "Gebruikers",
   "users.password": "Je wachtwoord, nodig voor wijzigingen hier",
   "users.password_first": "Voer eerst je wachtwoord in.",
@@ -415,6 +434,11 @@
     "wrong user name or password": "verkeerde gebruikersnaam of wachtwoord",
     "you can't delete yourself": "je kunt jezelf niet verwijderen",
     "Field required": "verplicht veld",
-    "String should have at most {max_length} characters": "hoogstens {max_length} tekens"
+    "String should have at most {max_length} characters": "hoogstens {max_length} tekens",
+    "access key not found": "toegangssleutel niet gevonden",
+    "at most {TOKENS_MAX} access keys per user": "hoogstens {TOKENS_MAX} toegangssleutels per gebruiker",
+    "missing or unknown access key": "toegangssleutel ontbreekt of is onbekend",
+    "the name must have 1 to {NAME_MAX} characters": "de naam moet 1 tot {NAME_MAX} tekens hebben",
+    "the text is required": "de tekst ontbreekt"
   }
 }

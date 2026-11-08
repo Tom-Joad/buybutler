@@ -335,6 +335,25 @@
   "tf.codes_new_confirm": "Créer de nouveaux codes de secours ? Les anciens ne fonctionneront plus.",
   "tf.codes_new_done": "Nouveaux codes de secours créés ; les anciens ne fonctionnent plus.",
 
+  "tokens.title": "Clés d’accès",
+  "tokens.help": "Permet à un autre programme, comme un livre de recettes, d’ajouter des articles à la liste de courses d’une liste. Une clé fonctionne sans le second facteur : gardez-la comme un mot de passe et supprimez-la quand le programme n’en a plus besoin.",
+  "tokens.name": "Nom de la nouvelle clé",
+  "tokens.name_example": "Livre de recettes",
+  "tokens.list": "Liste de courses de",
+  "tokens.password": "Mot de passe actuel",
+  "tokens.password_first": "Saisissez d’abord votre mot de passe actuel.",
+  "tokens.create": "Créer une clé d’accès",
+  "tokens.created": "Clé d’accès créée.",
+  "tokens.shown_once": "Copiez maintenant la clé dans l’autre programme ; elle n’est affichée qu’une seule fois.",
+  "tokens.copy": "Copier la clé",
+  "tokens.copied": "Clé copiée.",
+  "tokens.copy_failed": "La copie n’a pas fonctionné ; sélectionnez la clé et copiez-la à la main.",
+  "tokens.for_list": "pour {list}",
+  "tokens.used": "dernière utilisation {time}",
+  "tokens.unused": "pas encore utilisée",
+  "tokens.remove_confirm": "Supprimer la clé d’accès « {name} » ? Le programme qui l’utilise n’aura plus accès à la liste.",
+  "tokens.removed": "Clé d’accès supprimée.",
+
   "users.title": "Utilisateurs",
   "users.password": "Votre mot de passe, nécessaire pour les changements ici",
   "users.password_first": "Saisissez d'abord votre mot de passe.",
@@ -415,6 +434,11 @@
     "wrong user name or password": "nom d'utilisateur ou mot de passe erroné",
     "you can't delete yourself": "vous ne pouvez pas vous supprimer vous-même",
     "Field required": "champ obligatoire",
-    "String should have at most {max_length} characters": "au plus {max_length} caractères"
+    "String should have at most {max_length} characters": "au plus {max_length} caractères",
+    "access key not found": "clé d’accès introuvable",
+    "at most {TOKENS_MAX} access keys per user": "au plus {TOKENS_MAX} clés d’accès par utilisateur",
+    "missing or unknown access key": "clé d’accès manquante ou inconnue",
+    "the name must have 1 to {NAME_MAX} characters": "le nom doit comporter de 1 à {NAME_MAX} caractères",
+    "the text is required": "le texte est obligatoire"
   }
 }

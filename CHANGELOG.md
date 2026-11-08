@@ -6,6 +6,19 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Added
+- Access keys for other programs, such as a recipe book putting a recipe's
+  ingredients on the shopping list. Under **Account**, **Access keys** a
+  user makes a key for the shopping list of one list they may edit; it needs
+  the current password, is shown once and stored only as a hash (database
+  migration 8). Programs send it as `Authorization: Bearer bbt_…` to
+  `GET /api/v1/shopping` (the list's name and items) and
+  `POST /api/v1/shopping` (add up to 100 items as text with a quantity). A
+  key stops working when it is removed, or when its user may no longer edit
+  the list.
+
 ## [1.1.2] - 2026-11-06
 
 ### Changed
@@ -285,6 +298,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.1.2...HEAD
 [1.1.2]: https://github.com/Tom-Joad/buybutler/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Tom-Joad/buybutler/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/Tom-Joad/buybutler/compare/v1.0.6...v1.1.0

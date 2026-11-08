@@ -236,6 +236,22 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT '';
     """,
+    # 8: access keys for other programs (a recipe book): each belongs to a user
+    # and reaches the shopping list of one list. Only the key's SHA-256 is
+    # stored.
+    """
+    CREATE TABLE api_tokens (
+        id            INTEGER PRIMARY KEY,
+        user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        list_id       INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        token_hash    TEXT NOT NULL UNIQUE,
+        last_used_at  TEXT,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL
+    );
+    CREATE INDEX api_tokens_user ON api_tokens(user_id);
+    """,
 ]
 
 

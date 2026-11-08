@@ -1228,6 +1228,7 @@ function showAccount() {
   showInfo($("#a-message"), "");
   updateOutboxBadge();
   showSecurity();
+  showTokens();
   $("#a-users-section").hidden = state.user.role !== "admin";
   if (state.user.role === "admin") loadUsers().catch((err) => showError($("#u-message"), err));
 }
@@ -1992,6 +1993,77 @@ $("#tf-passkey-add").addEventListener("click", async () => {
     showInfo(msg, t("tf.passkey_added"));
   } catch (err) {
     showError(msg, passkeyError(err));
+  }
+});
+
+// ---- Access keys for other programs ----------------------------------------
+
+async function showTokens() {
+  $("#tk-new").hidden = true;
+  $("#tk-password").value = "";
+  showInfo($("#tk-message"), "");
+  // Only lists the user may change can get a key.
+  const lists = (state.lists || []).filter((l) => l.role === "owner" || l.role === "editor");
+  $("#tk-list").replaceChildren(...lists.map((l) => el("option", { value: String(l.id), text: l.name })));
+  if (state.listId && lists.some((l) => l.id === state.listId)) $("#tk-list").value = String(state.listId);
+  $("#tk-create").disabled = lists.length === 0;
+  try {
+    renderTokens((await api("GET", "/api/account/tokens")).tokens);
+  } catch (err) {
+    showError($("#tk-message"), err);
+  }
+}
+
+function renderTokens(keys) {
+  $("#tk-keys").replaceChildren(...keys.map((k) => {
+    const remove = el("button", { type: "button", class: "edit linkish", text: t("common.remove") });
+    remove.addEventListener("click", async () => {
+      if (!confirm(t("tokens.remove_confirm", { name: k.name }))) return;
+      try {
+        renderTokens((await api("DELETE", `/api/account/tokens/${k.id}`, undefined, { retries: 0 })).tokens);
+        $("#tk-new").hidden = true;
+        showInfo($("#tk-message"), t("tokens.removed"));
+      } catch (err) {
+        showError($("#tk-message"), err);
+      }
+    });
+    const used = k.last_used_at ? t("tokens.used", { time: stamp(k.last_used_at) }) : t("tokens.unused");
+    return el("li", {},
+      el("div", { class: "head" }, el("span", { class: "word", text: k.name }), remove),
+      el("p", { class: "stamps", text: `${t("tokens.for_list", { list: k.list_name })} · ${used}` }));
+  }));
+}
+
+$("#tk-create").addEventListener("click", async () => {
+  const password = $("#tk-password").value;
+  if (!password) {
+    $("#tk-password").focus();
+    showError($("#tk-message"), new Error(t("tokens.password_first")));
+    return;
+  }
+  try {
+    const result = await api("POST", "/api/account/tokens", {
+      name: $("#tk-name").value.trim() || t("tokens.name_example"),
+      list_id: Number($("#tk-list").value),
+      password,
+    }, { retries: 0 });
+    $("#tk-password").value = "";
+    $("#tk-name").value = "";
+    renderTokens(result.tokens);
+    $("#tk-value").textContent = result.token;
+    $("#tk-new").hidden = false;
+    showInfo($("#tk-message"), t("tokens.created"));
+  } catch (err) {
+    showError($("#tk-message"), err);
+  }
+});
+
+$("#tk-copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("#tk-value").textContent);
+    showInfo($("#tk-message"), t("tokens.copied"));
+  } catch {
+    showError($("#tk-message"), new Error(t("tokens.copy_failed")));
   }
 });
 

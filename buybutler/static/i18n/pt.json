@@ -335,6 +335,25 @@
   "tf.codes_new_confirm": "Criar novos códigos de recuperação? Os antigos deixam de funcionar.",
   "tf.codes_new_done": "Novos códigos de recuperação criados; os antigos já não funcionam.",
 
+  "tokens.title": "Chaves de acesso",
+  "tokens.help": "Permite que outro programa, como um livro de receitas, adicione itens à lista de compras de uma lista. Uma chave funciona sem o segundo fator: guarde-a como uma palavra-passe e remova-a quando o programa já não precisar dela.",
+  "tokens.name": "Nome da nova chave",
+  "tokens.name_example": "Livro de receitas",
+  "tokens.list": "Lista de compras de",
+  "tokens.password": "Palavra-passe atual",
+  "tokens.password_first": "Introduza primeiro a sua palavra-passe atual.",
+  "tokens.create": "Criar uma chave de acesso",
+  "tokens.created": "Chave de acesso criada.",
+  "tokens.shown_once": "Copie agora a chave para o outro programa; só é mostrada desta vez.",
+  "tokens.copy": "Copiar a chave",
+  "tokens.copied": "Chave copiada.",
+  "tokens.copy_failed": "Não foi possível copiar; selecione a chave e copie-a à mão.",
+  "tokens.for_list": "para {list}",
+  "tokens.used": "último uso {time}",
+  "tokens.unused": "ainda não usada",
+  "tokens.remove_confirm": "Remover a chave de acesso «{name}»? O programa que a usa deixa de aceder à lista.",
+  "tokens.removed": "Chave de acesso removida.",
+
   "users.title": "Utilizadores",
   "users.password": "A sua palavra-passe, necessária para alterações aqui",
   "users.password_first": "Introduza primeiro a sua palavra-passe.",
@@ -415,6 +434,11 @@
     "wrong user name or password": "nome de utilizador ou palavra-passe errados",
     "you can't delete yourself": "não se pode eliminar a si próprio",
     "Field required": "campo obrigatório",
-    "String should have at most {max_length} characters": "no máximo {max_length} caracteres"
+    "String should have at most {max_length} characters": "no máximo {max_length} caracteres",
+    "access key not found": "chave de acesso não encontrada",
+    "at most {TOKENS_MAX} access keys per user": "no máximo {TOKENS_MAX} chaves de acesso por utilizador",
+    "missing or unknown access key": "chave de acesso em falta ou desconhecida",
+    "the name must have 1 to {NAME_MAX} characters": "o nome deve ter de 1 a {NAME_MAX} caracteres",
+    "the text is required": "o texto é obrigatório"
   }
 }

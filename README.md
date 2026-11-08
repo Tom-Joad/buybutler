@@ -273,6 +273,28 @@ is on.
 
 Viewers of a list see its shopping list but can't change it.
 
+### Access keys for other programs
+
+Another program can put items on the shopping list of one list, for example
+a recipe book adding the ingredients of a recipe. Under **Account**, **Access keys**, give the key a name, pick the
+list and confirm with your password. The key (`bbt_…`) is shown once; copy it
+into the other program. It works without the second factor, so keep it like
+a password and remove it when it is no longer needed. It also stops working
+when you leave the list or become a viewer there.
+
+The program sends the key in the `Authorization` header:
+
+```sh
+curl -H "Authorization: Bearer bbt_…" https://buybutler.example.com/api/v1/shopping
+curl -H "Authorization: Bearer bbt_…" -H "Content-Type: application/json" \
+  -d '{"items":[{"text":"Mehl","quantity":"400 g"},{"text":"Eier","quantity":"4"}]}' \
+  https://buybutler.example.com/api/v1/shopping
+```
+
+`GET` answers with the list's name and its items (`name`, `quantity`,
+`checked`); `POST` adds up to 100 items as text (at most 100 characters,
+the quantity at most 20) in the name of the key's user.
+
 ## Offline
 
 Once opened over HTTPS, the app keeps itself on the phone (a service
