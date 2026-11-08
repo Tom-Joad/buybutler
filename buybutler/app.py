@@ -34,7 +34,8 @@ LIST_HEADER = "x-buybutler-list"
 # requests; the SameSite cookie is the second line.
 CSRF_HEADER = "x-buybutler"
 # The API for other programs: an access key in the Authorization header,
-# never a cookie, so a browser can't be tricked into sending it.
+# never a cookie, so a browser can't be tricked into sending it. Such a
+# request needs no CSRF_HEADER (see guard).
 PROGRAM_API = "/api/v1/"
 
 SECURITY_HEADERS = {
@@ -164,7 +165,8 @@ class TotpConfirm(BaseModel):
 
 
 class TokenIn(BaseModel):
-    name: str = Field(max_length=tokens.NAME_MAX)
+    # tokens.create checks the length once spaces are collapsed.
+    name: str = Field(max_length=1024)
     list_id: int
     password: str = Field(max_length=1024)
 
@@ -655,8 +657,14 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
+        # A request with an access key and without the session cookie is a
+        # program's: nothing a browser sends on its own. Decided by how the
+        # request authenticates, not by its path, so a route that reads the
+        # cookie keeps the check wherever it lives.
+        program = (request.headers.get("authorization", "").lower().startswith("bearer ")
+                   and COOKIE not in request.cookies)
         if (request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CSRF_HEADER) != "1"
-                and not request.url.path.startswith(PROGRAM_API)):
+                and not program):
             response: Response = JSONResponse({"detail": "missing request header"}, status_code=403)
         else:
             response = await call_next(request)

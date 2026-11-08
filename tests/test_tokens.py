@@ -170,3 +170,25 @@ def test_unknown_keys_are_throttled(logged_in, home):
     assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
     # From the same address, a good key waits too.
     assert good.get("/api/v1/shopping").status_code == 429
+
+
+def test_cookie_requests_keep_the_browser_header_check(logged_in, home):
+    token = make_token(logged_in, home).json()["token"]
+    items = {"items": [{"text": "Mehl"}]}
+    # With the session cookie, a key doesn't excuse the missing header,
+    # on the program API or anywhere else.
+    bearer = {"Authorization": f"Bearer {token}"}
+    assert logged_in.post("/api/v1/shopping", json=items, headers=bearer).status_code == 403
+    assert logged_in.post("/api/lists", json={"name": "Office"}, headers=bearer).status_code == 403
+    # Without the cookie, a key passes the check, but a cookie route still
+    # wants a session.
+    p = program(logged_in.app, token)
+    assert p.post("/api/v1/shopping", json=items).status_code == 201
+    assert p.post("/api/lists", json={"name": "Office"}).status_code == 401
+
+
+def test_key_name_is_measured_after_collapsing_spaces(logged_in, home):
+    r = make_token(logged_in, home, name="Recipe" + " " * 60 + "book")
+    assert r.status_code == 201 and r.json()["tokens"][0]["name"] == "Recipe book"
+    r = make_token(logged_in, home, name="x" * 61)
+    assert r.status_code == 400 and r.json()["detail"] == "the name must have 1 to 60 characters"
