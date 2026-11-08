@@ -336,7 +336,7 @@
   "tf.codes_new_done": "Nuevos códigos de recuperación creados; los antiguos ya no funcionan.",
 
   "tokens.title": "Claves de acceso",
-  "tokens.help": "Permite que otro programa, como un recetario, añada artículos a la lista de la compra de una lista. Una clave funciona sin el segundo factor: guárdala como una contraseña y elimínala cuando el programa ya no la necesite.",
+  "tokens.help": "Permite que otro programa, como un recetario, añada artículos a la lista de la compra de una lista. Una clave funciona sin el segundo paso: guárdala como una contraseña y elimínala cuando el programa ya no la necesite.",
   "tokens.name": "Nombre de la nueva clave",
   "tokens.name_example": "Recetario",
   "tokens.list": "Lista de la compra de",

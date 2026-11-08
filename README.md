@@ -407,6 +407,8 @@ check calls `http://127.0.0.1:8080/health`.
 | "Camera needs HTTPS" | The page was opened over plain HTTP; use the reverse proxy's HTTPS address |
 | "No camera access" | The browser or phone denied the camera; allow it in the site settings |
 | Logged out after a password change | Intended: a new password ends every other session; so does turning on two-factor login |
+| A program gets `401` after a password change | Intended: a new password removes that user's access keys; make a new key under **Account** |
+| "database schema N is newer than this version supports" | An older image was started on a database a newer version has changed; use the newer image, or the database from a backup made before the update |
 | No "Log in with a passkey" button | `BUYBUTLER_PUBLIC_URL` isn't set, or the page was opened at another address than that one |
 | "Wrong code" from the authenticator app | The phone's clock is off, or the code was used already; wait for the next one |
 | "Too many failed logins" | Wait 15 minutes, or restart the container (also when someone else guessed wrong for your account) |

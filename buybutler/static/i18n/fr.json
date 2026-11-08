@@ -336,7 +336,7 @@
   "tf.codes_new_done": "Nouveaux codes de secours créés ; les anciens ne fonctionnent plus.",
 
   "tokens.title": "Clés d’accès",
-  "tokens.help": "Permet à un autre programme, comme un livre de recettes, d’ajouter des articles à la liste de courses d’une liste. Une clé fonctionne sans le second facteur : gardez-la comme un mot de passe et supprimez-la quand le programme n’en a plus besoin.",
+  "tokens.help": "Permet à un autre programme, comme un livre de recettes, d’ajouter des articles à la liste de courses d’une liste. Une clé fonctionne sans deuxième facteur : gardez-la comme un mot de passe et supprimez-la quand le programme n’en a plus besoin.",
   "tokens.name": "Nom de la nouvelle clé",
   "tokens.name_example": "Livre de recettes",
   "tokens.list": "Liste de courses de",
