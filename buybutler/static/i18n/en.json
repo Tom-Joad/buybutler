@@ -292,6 +292,7 @@
   "password.new": "New password, at least 10 characters",
   "password.submit": "Change password",
   "password.changed": "Password changed. Other devices have to log in again; your access keys were removed.",
+  "password.unknown": "No answer came back, so it is not known whether the password was changed. Try to log in with the new password; if that fails, use the old one.",
 
   "tf.title": "Two-factor login",
   "tf.password": "Current password, needed for changes here",

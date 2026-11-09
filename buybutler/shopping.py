@@ -124,12 +124,8 @@ def add(conn: sqlite3.Connection, list_id: int, user_id: int, client_id: str | N
     and two recipes needing "Milk" give one line. A different quantity gets
     its own line, so nothing is lost. The list takes at most ITEMS_MAX items
     this way."""
-    if client_id:
-        row = conn.execute("SELECT list_id FROM shopping_items WHERE client_id = ?", (client_id,)).fetchone()
-        if row is not None:
-            if row["list_id"] != list_id:
-                raise ShoppingError("this item ID is used already")
-            return client_id, False
+    if client_id and _replayed(conn, list_id, client_id):
+        return client_id, False
     if product_id is not None:
         if conn.execute("SELECT 1 FROM products WHERE id = ? AND list_id = ?", (product_id, list_id)).fetchone() is None:
             raise ShoppingError("product not found")
@@ -153,12 +149,28 @@ def add(conn: sqlite3.Connection, list_id: int, user_id: int, client_id: str | N
             raise ShoppingError(f"the shopping list is full: at most {ITEMS_MAX} items")
     client_id = client_id or str(uuid.uuid4())
     stamp = db.now()
-    conn.execute(
-        "INSERT INTO shopping_items (list_id, product_id, text, quantity, store, created_by, client_id,"
-        " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (list_id, product_id, text, quantity, store, user_id, client_id, stamp, stamp),
-    )
+    try:
+        conn.execute(
+            "INSERT INTO shopping_items (list_id, product_id, text, quantity, store, created_by, client_id,"
+            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (list_id, product_id, text, quantity, store, user_id, client_id, stamp, stamp),
+        )
+    except sqlite3.IntegrityError:
+        # A repeated request ran at the same time: its insert waited for the
+        # first copy's commit and then hit the unique client_id.
+        if not _replayed(conn, list_id, client_id):
+            raise
+        return client_id, False
     return client_id, True
+
+
+def _replayed(conn: sqlite3.Connection, list_id: int, client_id: str) -> bool:
+    """Whether an item with this client_id exists on the list already; an ID
+    used on another list is refused."""
+    row = conn.execute("SELECT list_id FROM shopping_items WHERE client_id = ?", (client_id,)).fetchone()
+    if row is not None and row["list_id"] != list_id:
+        raise ShoppingError("this item ID is used already")
+    return row is not None
 
 
 def _open_text(conn: sqlite3.Connection, list_id: int, text: str, quantity: str) -> sqlite3.Row | None:

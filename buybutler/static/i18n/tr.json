@@ -292,6 +292,7 @@
   "password.new": "Yeni parola, en az 10 karakter",
   "password.submit": "Parolayı değiştir",
   "password.changed": "Parola değiştirildi. Diğer cihazların yeniden giriş yapması gerekir; erişim anahtarlarınız kaldırıldı.",
+  "password.unknown": "Yanıt gelmedi, bu yüzden parolanın değişip değişmediği bilinmiyor. Yeni parolayla giriş yapmayı dene; olmazsa eskisini kullan.",
 
   "tf.title": "İki adımlı giriş",
   "tf.password": "Geçerli parola, buradaki değişiklikler için gerekli",

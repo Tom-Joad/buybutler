@@ -292,6 +292,7 @@
   "password.new": "Nowe hasło, co najmniej 10 znaków",
   "password.submit": "Zmień hasło",
   "password.changed": "Hasło zmienione. Inne urządzenia muszą zalogować się ponownie; twoje klucze dostępu zostały usunięte.",
+  "password.unknown": "Nie nadeszła odpowiedź, więc nie wiadomo, czy hasło zostało zmienione. Spróbuj zalogować się nowym hasłem; jeśli się nie uda, użyj starego.",
 
   "tf.title": "Logowanie dwuetapowe",
   "tf.password": "Obecne hasło, potrzebne do zmian tutaj",

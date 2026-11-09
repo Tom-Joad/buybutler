@@ -292,6 +292,7 @@
   "password.new": "Nieuw wachtwoord, minstens 10 tekens",
   "password.submit": "Wachtwoord wijzigen",
   "password.changed": "Wachtwoord gewijzigd. Andere apparaten moeten opnieuw inloggen; je toegangssleutels zijn verwijderd.",
+  "password.unknown": "Er kwam geen antwoord, dus het is onbekend of het wachtwoord is gewijzigd. Probeer in te loggen met het nieuwe; lukt dat niet, gebruik dan het oude.",
 
   "tf.title": "Inloggen in twee stappen",
   "tf.password": "Huidig wachtwoord, nodig voor wijzigingen hier",

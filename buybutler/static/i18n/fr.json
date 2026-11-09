@@ -292,6 +292,7 @@
   "password.new": "Nouveau mot de passe, au moins 10 caractères",
   "password.submit": "Changer le mot de passe",
   "password.changed": "Mot de passe changé. Les autres appareils doivent se reconnecter ; vos clés d’accès ont été supprimées.",
+  "password.unknown": "Aucune réponse n’est arrivée : on ne sait pas si le mot de passe a été changé. Essayez de vous connecter avec le nouveau ; sinon, utilisez l’ancien.",
 
   "tf.title": "Connexion à deux facteurs",
   "tf.password": "Mot de passe actuel, nécessaire pour les changements ici",

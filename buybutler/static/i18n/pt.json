@@ -292,6 +292,7 @@
   "password.new": "Nova palavra-passe, pelo menos 10 caracteres",
   "password.submit": "Mudar a palavra-passe",
   "password.changed": "Palavra-passe alterada. Os outros dispositivos têm de iniciar sessão de novo; as suas chaves de acesso foram removidas.",
+  "password.unknown": "Não chegou nenhuma resposta, por isso não se sabe se a palavra-passe foi alterada. Tente iniciar sessão com a nova; se falhar, use a antiga.",
 
   "tf.title": "Início de sessão em dois passos",
   "tf.password": "Palavra-passe atual, necessária para alterações aqui",

@@ -292,6 +292,7 @@
   "password.new": "Contraseña nueva, al menos 10 caracteres",
   "password.submit": "Cambiar contraseña",
   "password.changed": "Contraseña cambiada. Los demás dispositivos deben iniciar sesión de nuevo; tus claves de acceso se han eliminado.",
+  "password.unknown": "No llegó ninguna respuesta, así que no se sabe si la contraseña se cambió. Intenta iniciar sesión con la nueva; si falla, usa la anterior.",
 
   "tf.title": "Inicio de sesión en dos pasos",
   "tf.password": "Contraseña actual, necesaria para cambios aquí",

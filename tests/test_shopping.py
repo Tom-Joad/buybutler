@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from buybutler import db
+from buybutler import db, shopping
 
 from .test_app import H, client, fake_off, logged_in, make_product, other_user_with_list, rate, settings  # noqa: F401
 from .test_lists import add_user, home, login, share, use  # noqa: F401
@@ -193,3 +193,31 @@ def test_remembered_order_is_capped(logged_in, settings):
     assert len(kept) == 2000
     # The items just shown keep their places; the oldest ones are forgotten.
     assert set(second) <= kept
+
+
+def test_parallel_copy_of_a_request_returns_the_first_item(logged_in, home, settings, monkeypatch):
+    first = add(logged_in, client_id="item-00000000001", text="Flour").json()
+    # The second copy passed the check before the first one committed: its
+    # insert then hits the unique client_id.
+    real = shopping._replayed
+    calls = []
+
+    def blind_once(conn, list_id, client_id):
+        calls.append(client_id)
+        return False if len(calls) == 1 else real(conn, list_id, client_id)
+
+    monkeypatch.setattr(shopping, "_replayed", blind_once)
+    r = add(logged_in, client_id="item-00000000001", text="Flour")
+    assert r.status_code == 200 and r.json()["id"] == first["id"]
+    assert len(items(logged_in)) == 1
+
+
+def test_parallel_copy_for_another_list_is_a_conflict(logged_in, home, settings, monkeypatch):
+    other = logged_in.post("/api/lists", json={"name": "Other"}, headers=H).json()["id"]
+    add(logged_in, client_id="item-00000000002", text="Flour")
+    real = shopping._replayed
+    calls = []
+    monkeypatch.setattr(shopping, "_replayed",
+                        lambda c, l, i: False if not calls.append(i) and len(calls) == 1 else real(c, l, i))
+    r = add(use(logged_in, other), client_id="item-00000000002", text="Flour")
+    assert r.status_code == 409

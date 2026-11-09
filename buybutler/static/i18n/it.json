@@ -292,6 +292,7 @@
   "password.new": "Nuova password, almeno 10 caratteri",
   "password.submit": "Cambia password",
   "password.changed": "Password cambiata. Gli altri dispositivi devono accedere di nuovo; le tue chiavi di accesso sono state rimosse.",
+  "password.unknown": "Non è arrivata alcuna risposta, quindi non si sa se la password è stata cambiata. Prova ad accedere con la nuova; se non funziona, usa la vecchia.",
 
   "tf.title": "Accesso a due fattori",
   "tf.password": "Password attuale, necessaria per le modifiche qui",
