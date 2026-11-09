@@ -137,6 +137,29 @@ def test_throttle_memory_is_bounded(monkeypatch):
     assert len(t._attempts) <= 100
 
 
+def test_flooding_the_throttle_does_not_free_a_locked_account(monkeypatch):
+    t = auth.LoginThrottle()
+    monkeypatch.setattr(auth.LoginThrottle, "MAX_KEYS", 100)
+    for _ in range(5):
+        t.begin("alice", "1.1.1.1")
+    assert t.begin("alice", "1.1.1.1")[1] is None
+    for n in range(1000):
+        t.begin(f"x{n}", f"10.0.{n // 256}.{n % 256}")
+    assert t.begin("alice", "2.2.2.2")[1] is None
+    assert len(t._attempts) <= 100
+
+
+def test_a_full_throttle_refuses_new_keys_instead_of_dropping_locked_ones(monkeypatch):
+    t = auth.LoginThrottle(per_account=1, per_client=1)
+    monkeypatch.setattr(auth.LoginThrottle, "MAX_KEYS", 10)
+    for n in range(5):
+        assert t.begin(f"user{n}", f"198.51.100.{n}")[1] is not None  # 10 locked keys
+    wait, attempt = t.begin("newcomer", "203.0.113.1")
+    assert attempt is None and wait > 0
+    assert len(t._attempts) == 10
+    assert t.begin("user0", "203.0.113.2")[1] is None  # still locked
+
+
 def test_log_time_is_local_with_offset(monkeypatch):
     import json
     import logging

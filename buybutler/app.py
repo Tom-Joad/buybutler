@@ -634,6 +634,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     # Unknown access keys per client address: keys can't be guessed, but a
     # program sending a wrong one in a loop shouldn't fill the log.
     key_throttle = auth.LoginThrottle(per_client=20)
+    # Anonymous passkey login options per client address: each one is a row
+    # in the challenge table, and they need no password.
+    options_throttle = auth.LoginThrottle(per_client=30)
     lookup_client = off.Client(settings.off_language, transport=transport)
 
     @asynccontextmanager
@@ -797,7 +800,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             log.warning("login_throttled", extra={"client": client})
             raise HTTPException(429, "too many wrong codes, try again later", headers={"Retry-After": str(wait)})
         code = body.code.strip()
-        if code.isdigit():
+        if twofactor.is_totp_code(code):
             method, accepted = "totp", twofactor.check_totp(conn, user.id, code)
         else:
             method, accepted = "recovery_code", twofactor.use_recovery_code(conn, user.id, code)
@@ -821,9 +824,14 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return {"passkey_origin": settings.public_url or None}
 
     @app.post("/api/session/passkey/options")
-    def passkey_login_options(body: PasskeyStart, conn: Conn) -> dict:
+    def passkey_login_options(body: PasskeyStart, request: Request, conn: Conn) -> dict:
         passkeys_on()
         if body.ticket is None:
+            client = client_of(request)
+            wait, _ = options_throttle.begin(None, client)
+            if wait:
+                log.warning("login_throttled", extra={"client": client})
+                raise HTTPException(429, "too many logins at the same time, try again later", headers={"Retry-After": str(wait)})
             options, challenge = twofactor.authentication_options(conn, settings.passkey_rp_id, None)
             return {"ticket": new_ticket(conn, "passkey_login", None, challenge), "options": options}
         ticket = twofactor.get_challenge(conn, body.ticket, "second_factor")
