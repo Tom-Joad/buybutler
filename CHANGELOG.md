@@ -6,6 +6,22 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Fixed
+- Changing the password is no longer repeated after a lost answer. A repeat
+  went out with the session the first request had ended and showed "not
+  logged in" although the password was changed; now the page says that the
+  result is unknown and to try the new password.
+- A session extended by a picture request or a picture upload now gets its
+  cookie renewed like any other request; before, the browser dropped the
+  cookie although the server still kept the session.
+- Picture uploads no longer hold up every other request while they wait for
+  the database or the disk.
+- A rating whose price carries a `client_id` that is in use already, and two
+  parallel requests adding the same shopping item, give `409` and the first
+  item instead of a server error.
+
 ## [1.2.1] - 2026-11-09
 
 ### Fixed

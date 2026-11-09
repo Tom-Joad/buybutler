@@ -14,6 +14,7 @@ import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
 from . import __version__, auth, config, db, images, lists, off, prices, shopping, tokens, twofactor
@@ -1585,20 +1586,29 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             raise HTTPException(415, str(exc)) from None
         return bytes(data)
 
-    @app.put("/api/products/{product_id}/image")
-    async def put_product_image(product_id: int, request: Request) -> dict:
-        # Checked before the upload is read, so nobody without a session can
-        # make the server buffer a picture.
+    # The picture handlers read the body on the event loop; everything that
+    # waits on SQLite or the disk runs in the thread pool, one function per step.
+    def check_product_upload(request: Request, response: Response, product_id: int) -> None:
         with db.session(settings.database) as conn:
-            _load_product(conn, session_of(request, conn), product_id, write=True)
-        data = await read_picture(request)
+            _load_product(conn, session_of(request, conn, response), product_id, write=True)
+
+    def store_product_image(request: Request, response: Response, product_id: int, data: bytes) -> dict:
         with db.session(settings.database) as conn:
-            user = session_of(request, conn)
+            user = session_of(request, conn, response)
             row = _load_product(conn, user, product_id, write=True)
             name = images.save(settings.images, "products", data)
             conn.execute("UPDATE products SET image = ?, updated_at = ? WHERE id = ?", (name, db.now(), product_id))
             result = _product_json(conn, _load_product(conn, user, product_id))
         images.delete(settings.images, "products", row["image"])
+        return result
+
+    @app.put("/api/products/{product_id}/image")
+    async def put_product_image(product_id: int, request: Request, response: Response) -> dict:
+        # Checked before the upload is read, so nobody without a session can
+        # make the server buffer a picture.
+        await run_in_threadpool(check_product_upload, request, response, product_id)
+        data = await read_picture(request)
+        result = await run_in_threadpool(store_product_image, request, response, product_id, data)
         log.info("product_image_set", extra={"product_id": product_id, "bytes": len(data)})
         return result
 
@@ -1641,7 +1651,12 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         if body.price is not None:
             price = body.price.model_copy(update={"store": body.price.store or body.store,
                                                   "bought_on": body.price.bought_on or date.fromisoformat(rated_on)})
-            insert_price(conn, user, product_id, price, rating_id)
+            try:
+                insert_price(conn, user, product_id, price, rating_id)
+            except sqlite3.IntegrityError:
+                # The price's client_id is in use already; the rating is
+                # rolled back with the request.
+                raise HTTPException(409, "this client id is in use") from None
         return _rating(_load_rating(conn, user, rating_id))
 
     # ---- prices ------------------------------------------------------------
@@ -1749,18 +1764,25 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         images.delete(settings.images, "ratings", row["photo"])
         log.info("rating_deleted", extra={"rating_id": rating_id})
 
-    @app.put("/api/ratings/{rating_id}/photo")
-    async def put_rating_photo(rating_id: int, request: Request) -> dict:
+    def check_photo_upload(request: Request, response: Response, rating_id: int) -> None:
         with db.session(settings.database) as conn:
-            _load_rating(conn, session_of(request, conn), rating_id, write=True)
-        data = await read_picture(request)
+            _load_rating(conn, session_of(request, conn, response), rating_id, write=True)
+
+    def store_rating_photo(request: Request, response: Response, rating_id: int, data: bytes) -> dict:
         with db.session(settings.database) as conn:
-            user = session_of(request, conn)
+            user = session_of(request, conn, response)
             row = _load_rating(conn, user, rating_id, write=True)
             name = images.save(settings.images, "ratings", data)
             conn.execute("UPDATE ratings SET photo = ?, updated_at = ? WHERE id = ?", (name, db.now(), rating_id))
             result = _rating(_load_rating(conn, user, rating_id))
         images.delete(settings.images, "ratings", row["photo"])
+        return result
+
+    @app.put("/api/ratings/{rating_id}/photo")
+    async def put_rating_photo(rating_id: int, request: Request, response: Response) -> dict:
+        await run_in_threadpool(check_photo_upload, request, response, rating_id)
+        data = await read_picture(request)
+        result = await run_in_threadpool(store_rating_photo, request, response, rating_id, data)
         log.info("rating_photo_set", extra={"rating_id": rating_id, "bytes": len(data)})
         return result
 
@@ -1836,7 +1858,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     # ---- pictures and interface -------------------------------------------
 
     @app.get("/images/{kind}/{name}")
-    def picture(kind: str, name: str, user: CurrentUser, conn: Conn) -> FileResponse:
+    def picture(kind: str, name: str, user: CurrentUser, conn: Conn, response: Response) -> FileResponse:
         target = images.path(settings.images, kind, name)
         if target is None:
             raise HTTPException(404, "not found")
@@ -1853,8 +1875,13 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             ).fetchone()
         if owner is None or not target.is_file():
             raise HTTPException(404, "not found")
-        return FileResponse(target, media_type=images.MEDIA_TYPES[target.suffix[1:]],
+        file = FileResponse(target, media_type=images.MEDIA_TYPES[target.suffix[1:]],
                             headers={"Cache-Control": "private, max-age=31536000, immutable"})
+        # FastAPI doesn't copy headers into a response the handler builds; the
+        # renewed session cookie has to be put on it by hand.
+        for cookie in response.headers.getlist("set-cookie"):
+            file.headers.append("set-cookie", cookie)
+        return file
 
     @app.get("/")
     def index() -> FileResponse:

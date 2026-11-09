@@ -2146,11 +2146,14 @@ $("#password-form").addEventListener("submit", async (ev) => {
   const form = ev.currentTarget;
   const msg = $("#a-message");
   try {
-    await api("POST", "/api/session/password", { current: form.current.value, new: form.new.value });
+    // Not repeated: a lost answer to a change that went through would be
+    // repeated with the session it ended and show "not logged in".
+    await api("POST", "/api/session/password", { current: form.current.value, new: form.new.value }, { retries: 0 });
     form.reset();
     showInfo(msg, t("password.changed"));
   } catch (err) {
-    showError(msg, err);
+    if (err instanceof NetworkError) showError(msg, new Error(t("password.unknown")));
+    else showError(msg, err);
   }
 });
 

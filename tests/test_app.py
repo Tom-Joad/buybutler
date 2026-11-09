@@ -340,6 +340,38 @@ def test_photo_upload_and_download(logged_in):
     assert got.headers["content-type"] == "image/jpeg"
 
 
+def age_session(settings) -> None:
+    """Make the next request extend the session."""
+    with db.session(settings.database) as conn:
+        conn.execute("UPDATE sessions SET last_seen_at = '2000-01-01T00:00:00.000Z'")
+
+
+def assert_renewed(r) -> None:
+    assert r.status_code == 200, r.text
+    cookie = r.headers["set-cookie"]
+    assert "buybutler_session=" in cookie and "Max-Age=" in cookie
+
+
+def test_a_picture_request_renews_the_cookie(logged_in, settings):
+    p = make_product(logged_in)
+    url = logged_in.put(f"/api/products/{p['id']}/image", content=PNG, headers=H).json()["image"]
+    age_session(settings)
+    assert_renewed(logged_in.get(url))
+    assert "set-cookie" not in logged_in.get(url).headers
+
+
+def test_a_product_picture_upload_renews_the_cookie(logged_in, settings):
+    p = make_product(logged_in)
+    age_session(settings)
+    assert_renewed(logged_in.put(f"/api/products/{p['id']}/image", content=PNG, headers=H))
+
+
+def test_a_rating_photo_upload_renews_the_cookie(logged_in, settings):
+    r = rate(logged_in, make_product(logged_in)["id"])
+    age_session(settings)
+    assert_renewed(logged_in.put(f"/api/ratings/{r['id']}/photo", content=JPEG, headers=H))
+
+
 def test_photo_rejects_other_files(logged_in):
     p = make_product(logged_in)
     r = logged_in.put(f"/api/products/{p['id']}/image", content=b"<svg></svg>", headers=H)
@@ -600,6 +632,19 @@ def test_rating_can_carry_a_price(logged_in):
     # Without a price nothing is stored.
     rate(logged_in, p["id"])
     assert len(logged_in.get(f"/api/products/{p['id']}").json()["prices"]) == 1
+
+
+def test_nested_price_with_a_used_client_id_is_a_conflict_not_an_error(logged_in):
+    p = make_product(logged_in)
+    first = logged_in.post(f"/api/products/{p['id']}/prices", json={"amount_cents": 100, "client_id": "price-00000000001"},
+                           headers=H)
+    assert first.status_code == 201
+    body = {"buy_again": True, "client_id": "rating-00000000001", "price": {"amount_cents": 150, "client_id": "price-00000000001"}}
+    r = logged_in.post(f"/api/products/{p['id']}/ratings", json=body, headers=H)
+    assert r.status_code == 409
+    # Nothing of the request stayed: no rating, and the first price is untouched.
+    detail = logged_in.get(f"/api/products/{p['id']}").json()
+    assert detail["ratings"] == [] and [x["amount_cents"] for x in detail["prices"]] == [100]
 
 
 def test_price_summary_skips_offers_and_converts_units(logged_in):
