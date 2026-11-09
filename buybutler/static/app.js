@@ -710,8 +710,8 @@ function go(hash) {
 }
 
 function show(id, nav) {
-  // Secrets shown once (a new access key, recovery codes) don't stay in the
-  // page once the account is left.
+  // Secrets shown once (a new access key, recovery codes, the authenticator
+  // key) don't stay in the page once the account is left.
   if (id !== "view-account") forgetSecrets();
   for (const v of views) v.hidden = v.id !== id;
   $("#bar").hidden = id === "view-login";
@@ -1852,7 +1852,18 @@ $("#p-shop").addEventListener("click", () => {
 
 // ---- Two-factor login (account) -------------------------------------------
 
+function forgetTotpSetup() {
+  $("#tf-totp-setup").hidden = true;
+  $("#tf-secret").textContent = "";
+  const qr = $("#tf-qr");
+  // The QR code is a blob URL that holds the key until it is revoked.
+  if (qr.src.startsWith("blob:")) URL.revokeObjectURL(qr.src);
+  qr.removeAttribute("src");
+  qr.hidden = true;
+}
+
 function forgetSecrets() {
+  forgetTotpSetup();
   $("#tf-codes").hidden = true;
   $("#tf-code-list").replaceChildren();
   delete $("#tf-code-list").dataset.codes;
@@ -1862,7 +1873,6 @@ function forgetSecrets() {
 
 async function showSecurity() {
   $("#tf-password").value = "";
-  $("#tf-totp-setup").hidden = true;
   forgetSecrets();
   showInfo($("#tf-message"), "");
   try {
@@ -1882,7 +1892,7 @@ function renderSecurity(sec) {
   $("#tf-totp-start").hidden = sec.totp;
   $("#tf-totp-remove").hidden = !sec.totp;
   $("#tf-codes-new").hidden = !sec.enabled;
-  if (sec.totp) $("#tf-totp-setup").hidden = true;
+  if (sec.totp) forgetTotpSetup();
 
   $("#tf-passkeys").replaceChildren(...sec.passkeys.map((pk) => {
     const remove = el("button", { type: "button", class: "edit linkish", text: t("common.remove") });

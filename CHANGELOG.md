@@ -25,8 +25,9 @@ Before 1.0.0, a minor version could need action; its entry says so.
   all, and unknown keys are throttled per client address.
 
 ### Changed
-- Recovery codes and a new access key are cleared from the page when
-  **Account** is left, not only hidden.
+- Recovery codes, a new access key and the key and QR code for an
+  authenticator app are cleared from the page when **Account** is left, not
+  only hidden.
 - Migration 8 changes the database for good: 1.1.2 and older don't start on
   it ("database schema 8 is newer than this version supports"). To be able
   to go back, keep a copy from before the update (`buybutler backup`, or a
