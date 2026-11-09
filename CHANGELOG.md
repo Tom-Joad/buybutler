@@ -318,7 +318,6 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
-[Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.2.0...HEAD
 [1.2.1]: https://github.com/Tom-Joad/buybutler/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Tom-Joad/buybutler/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/Tom-Joad/buybutler/compare/v1.1.1...v1.1.2
