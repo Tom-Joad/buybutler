@@ -22,6 +22,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import sqlite3
 import struct
@@ -52,6 +53,10 @@ CHALLENGE_MINUTES = 5
 # Passkey login options are handed out without a login; this caps the rows
 # someone can make the server keep.
 MAX_OPEN_CHALLENGES = 1000
+# Of those, the ones handed out without a login or a password (passkey login
+# options) may take half, so they can't use up the room that a login in its
+# second-factor step or a registration needs.
+MAX_ANONYMOUS_CHALLENGES = 500
 PASSKEY_NAME_MAX = 60
 
 
@@ -162,12 +167,20 @@ def _normal_code(code: str) -> str:
     return "".join(code.split()).replace("-", "").upper()
 
 
+def is_totp_code(code: str) -> bool:
+    """Six ASCII digits once spaces and dashes are gone, the way an
+    authenticator app shows them ("123 456"). Anything else is no TOTP code;
+    str.isdigit() would also take digits (Arabic-Indic, full-width) that
+    hmac.compare_digest can't compare."""
+    return re.fullmatch(rf"[0-9]{{{DIGITS}}}", _normal_code(code)) is not None
+
+
 def check_totp(conn: sqlite3.Connection, user_id: int, code: str, confirming: bool = False,
                now: float | None = None) -> bool:
     """Accept a code of the current, previous or next 30 seconds, once."""
-    code = _normal_code(code)
-    if len(code) != DIGITS or not code.isdigit():
+    if not is_totp_code(code):
         return False
+    code = _normal_code(code)
     row = conn.execute(
         "SELECT secret, last_step, confirmed_at FROM totp_secrets WHERE user_id = ?", (user_id,)
     ).fetchone()
@@ -243,6 +256,10 @@ def new_challenge(conn: sqlite3.Connection, purpose: str, user_id: int | None, c
     moment = datetime.now(timezone.utc)
     conn.execute("DELETE FROM auth_challenges WHERE expires_at < ?", (_iso(moment),))
     if conn.execute("SELECT COUNT(*) FROM auth_challenges").fetchone()[0] >= MAX_OPEN_CHALLENGES:
+        raise TooManyChallenges("too many logins in progress")
+    if purpose == "passkey_login" and conn.execute(
+        "SELECT COUNT(*) FROM auth_challenges WHERE purpose = 'passkey_login'"
+    ).fetchone()[0] >= MAX_ANONYMOUS_CHALLENGES:
         raise TooManyChallenges("too many logins in progress")
     token = secrets.token_urlsafe(32)
     conn.execute(

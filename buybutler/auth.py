@@ -242,17 +242,23 @@ class LoginThrottle:
             self._attempts.pop(key, None)
         return recent
 
+    def _limit(self, key: str) -> int:
+        return self.per_account if key.startswith("user:") else self.per_client
+
     def _sweep(self, moment: float) -> None:
         """Drop keys that were never seen again, so rotating addresses can't
-        fill the memory."""
+        fill the memory. A key at its limit is a lock and is never dropped
+        to make room: filling the table with made-up names must not free a
+        locked account (begin() refuses new keys while the table is full)."""
         if moment - self._swept < 60 and len(self._attempts) < self.MAX_KEYS:
             return
         self._swept = moment
         for key in list(self._attempts):
             self._recent(key, moment)
         if len(self._attempts) >= self.MAX_KEYS:
-            newest_first = sorted(self._attempts, key=lambda k: self._attempts[k][-1], reverse=True)
-            for key in newest_first[self.MAX_KEYS // 2 :]:
+            open_keys = [k for k, v in self._attempts.items() if len(v) < self._limit(k)]
+            open_keys.sort(key=lambda k: self._attempts[k][-1])
+            for key in open_keys[: max(0, len(self._attempts) - self.MAX_KEYS // 2)]:
                 del self._attempts[key]
 
     def begin(self, username: str | None, client: str) -> tuple[int, float | None]:
@@ -262,6 +268,9 @@ class LoginThrottle:
             moment = time.monotonic()
             self._sweep(moment)
             keys = self._keys(username, client)
+            if len(self._attempts) + sum(k not in self._attempts for k, _ in keys) > self.MAX_KEYS:
+                # Full of locks: refuse rather than drop one.
+                return 60, None
             wait = 0
             for key, limit in keys:
                 recent = self._recent(key, moment)
