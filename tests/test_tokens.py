@@ -113,6 +113,33 @@ def test_admin_password_reset_removes_the_keys(logged_in, settings, home):
     assert mine.get("/api/v1/shopping").status_code == 200
 
 
+def test_keys_do_not_survive_leaving_or_removal(logged_in, settings, home):
+    add_user(settings, "sam")
+    share(logged_in, home, "sam", "editor")
+    sam = login(logged_in.app, "sam")
+    other = logged_in.post("/api/lists", json={"name": "Other"}, headers=H).json()["id"]
+    sam_keys = {
+        "home": make_token(sam, home).json()["token"],
+    }
+    p = program(logged_in.app, sam_keys["home"])
+    assert p.get("/api/v1/shopping").status_code == 200
+    sam_id = next(u["id"] for u in logged_in.get("/api/users").json()["users"] if u["username"] == "sam")
+    # An owner removes sam: the key goes with the membership.
+    assert logged_in.delete(f"/api/lists/{home}/members/{sam_id}", headers=H).status_code == 204
+    assert sam.get("/api/account/tokens").json() == {"tokens": []}
+    share(logged_in, home, "sam", "editor")
+    assert p.get("/api/v1/shopping").status_code == 401
+    # Leaving on their own does the same; keys for other lists stay.
+    share(logged_in, other, "sam", "editor")
+    left = program(logged_in.app, make_token(sam, home).json()["token"])
+    kept = program(logged_in.app, make_token(sam, other).json()["token"])
+    assert sam.delete(f"/api/lists/{home}/members/{sam_id}", headers=H).status_code == 204
+    share(logged_in, home, "sam", "editor")
+    assert left.get("/api/v1/shopping").status_code == 401
+    assert kept.get("/api/v1/shopping").status_code == 200
+    assert [t["list_name"] for t in sam.get("/api/account/tokens").json()["tokens"]] == ["Other"]
+
+
 def test_repeated_request_adds_nothing(logged_in, home):
     p = program(logged_in.app, make_token(logged_in, home).json()["token"])
     body = {"items": [{"text": "Mehl", "quantity": "400 g"}, {"text": "Eier", "quantity": "4",

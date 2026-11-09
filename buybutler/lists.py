@@ -79,6 +79,9 @@ def remove_member(conn: sqlite3.Connection, list_id: int, user_id: int) -> None:
     if current["role"] == "owner" and owners(conn, list_id) == 1:
         raise ListError("a list needs at least one owner; make someone else owner first, or delete the list")
     conn.execute("DELETE FROM list_members WHERE list_id = ? AND user_id = ?", (list_id, user_id))
+    # An access key must not outlast the membership: it would work again, and
+    # show the list's name meanwhile, if the user were added back.
+    conn.execute("DELETE FROM api_tokens WHERE list_id = ? AND user_id = ?", (list_id, user_id))
 
 
 def delete_user(conn: sqlite3.Connection, user_id: int) -> list[tuple[str, str]]:

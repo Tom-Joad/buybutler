@@ -197,6 +197,40 @@ def test_totp_login(logged_in, settings):
     assert fresh.get("/api/session").status_code == 200
 
 
+def second_factor(c: TestClient, step: dict, code: str):
+    return c.post("/api/session/second-factor", json={"ticket": step["ticket"], "code": code}, headers=H)
+
+
+def test_totp_code_may_have_spaces_or_a_dash(logged_in, settings):
+    enable_totp(logged_in, settings)
+    for shape in ("{0} {1}", "{0}-{1}", " {0}{1} "):
+        wait_for_next_step(settings)
+        code = current_code(settings)
+        fresh = new_client(settings)
+        r = second_factor(fresh, login(fresh)["second_factor"], shape.format(code[:3], code[3:]))
+        assert r.status_code == 200, shape
+
+
+def test_a_spaced_wrong_code_counts_as_one_wrong_code(logged_in, settings):
+    enable_totp(logged_in, settings)
+    fresh = new_client(settings)
+    step = login(fresh)["second_factor"]
+    assert second_factor(fresh, step, "000 000").status_code == 401
+
+
+def test_non_ascii_digits_are_a_wrong_code_not_an_error(logged_in, settings):
+    enable_totp(logged_in, settings)
+    fresh = new_client(settings)
+    step = login(fresh)["second_factor"]
+    for code in ("\u0661\u0662\u0663\u0664\u0665\u0666", "\uff11\uff12\uff13\uff14\uff15\uff16"):
+        assert second_factor(fresh, step, code).status_code == 401
+    # They were counted: five more wrong codes in all lock the account.
+    statuses = [second_factor(fresh, step, "000000").status_code for _ in range(4)]
+    assert statuses[-1] == 429
+    with db.session(settings.database) as conn:
+        assert twofactor.check_totp(conn, 1, "\u0661\u0662\u0663\u0664\u0665\u0666") is False
+
+
 def test_a_totp_code_works_once(logged_in, settings):
     enable_totp(logged_in, settings)
     wait_for_next_step(settings)
@@ -414,6 +448,24 @@ def test_too_many_open_challenges(client, monkeypatch):
     monkeypatch.setattr(twofactor, "MAX_OPEN_CHALLENGES", 3)
     statuses = [client.post("/api/session/passkey/options", json={}, headers=H).status_code for _ in range(4)]
     assert statuses == [200, 200, 200, 429]
+
+
+def test_anonymous_challenges_leave_room_for_second_factor_logins(logged_in, settings, monkeypatch):
+    enable_totp(logged_in, settings)
+    monkeypatch.setattr(twofactor, "MAX_OPEN_CHALLENGES", 6)
+    monkeypatch.setattr(twofactor, "MAX_ANONYMOUS_CHALLENGES", 3)
+    flood = new_client(settings)
+    statuses = [flood.post("/api/session/passkey/options", json={}, headers=H).status_code for _ in range(5)]
+    assert statuses == [200, 200, 200, 429, 429]
+    fresh = new_client(settings)
+    step = login(fresh)["second_factor"]
+    wait_for_next_step(settings)
+    assert second_factor(fresh, step, current_code(settings)).status_code == 200
+
+
+def test_anonymous_passkey_options_are_throttled_per_client(client):
+    statuses = [client.post("/api/session/passkey/options", json={}, headers=H).status_code for _ in range(31)]
+    assert statuses[:30] == [200] * 30 and statuses[30] == 429
 
 
 # ---- admins and the command line -----------------------------------------

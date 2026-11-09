@@ -6,6 +6,28 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Security
+- Flooding the login throttle with made-up user names or forged client
+  addresses no longer frees a locked account. A key that has reached its
+  limit is never dropped to make room; while the table is full of such locks,
+  new keys are refused with `429` instead.
+- Access keys are removed with the membership they belong to: when a user
+  leaves a list or is removed from it, their keys for that list are deleted,
+  so they can't work again (or show the list's name) after the user is added
+  back.
+
+### Fixed
+- Anonymous passkey login requests can no longer fill the table of open
+  logins and lock out two-factor logins with `429`: they are limited per
+  client address, and they may use at most half of the room.
+- A code from an authenticator app with a space or a dash (`123 456`, as the
+  app shows it) is accepted at the second-factor step instead of being
+  counted as a wrong recovery code.
+- Digits that aren't ASCII (such as Arabic-Indic ones) as a second-factor code
+  give "wrong code" instead of a server error.
+
 ## [1.2.1] - 2026-11-09
 
 ### Fixed
