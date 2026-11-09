@@ -118,10 +118,7 @@ def test_keys_do_not_survive_leaving_or_removal(logged_in, settings, home):
     share(logged_in, home, "sam", "editor")
     sam = login(logged_in.app, "sam")
     other = logged_in.post("/api/lists", json={"name": "Other"}, headers=H).json()["id"]
-    sam_keys = {
-        "home": make_token(sam, home).json()["token"],
-    }
-    p = program(logged_in.app, sam_keys["home"])
+    p = program(logged_in.app, make_token(sam, home).json()["token"])
     assert p.get("/api/v1/shopping").status_code == 200
     sam_id = next(u["id"] for u in logged_in.get("/api/users").json()["users"] if u["username"] == "sam")
     # An owner removes sam: the key goes with the membership.
