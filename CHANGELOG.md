@@ -6,6 +6,13 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Fixed
+- The key and QR code shown while setting up an authenticator app are
+  cleared from the page when **Account** is left or the app is confirmed,
+  like the recovery codes; before, they were only hidden.
+
 ## [1.2.0] - 2026-11-08
 
 ### Added
@@ -25,9 +32,8 @@ Before 1.0.0, a minor version could need action; its entry says so.
   all, and unknown keys are throttled per client address.
 
 ### Changed
-- Recovery codes, a new access key and the key and QR code for an
-  authenticator app are cleared from the page when **Account** is left, not
-  only hidden.
+- Recovery codes and a new access key are cleared from the page when
+  **Account** is left, not only hidden.
 - Migration 8 changes the database for good: 1.1.2 and older don't start on
   it ("database schema 8 is newer than this version supports"). To be able
   to go back, keep a copy from before the update (`buybutler backup`, or a
@@ -312,6 +318,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.2.0...HEAD
 [1.2.0]: https://github.com/Tom-Joad/buybutler/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/Tom-Joad/buybutler/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/Tom-Joad/buybutler/compare/v1.1.0...v1.1.1
