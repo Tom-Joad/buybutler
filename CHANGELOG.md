@@ -6,7 +6,7 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
-## [Unreleased]
+## [1.2.2] - 2026-11-10
 
 ### Security
 - Flooding the login throttle with made-up user names or forged client
@@ -356,6 +356,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.2.2]: https://github.com/Tom-Joad/buybutler/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/Tom-Joad/buybutler/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Tom-Joad/buybutler/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/Tom-Joad/buybutler/compare/v1.1.1...v1.1.2
