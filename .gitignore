@@ -24,3 +24,6 @@ buybutler/static/vendor/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Claude Code's local settings: approved commands can hold tokens
+.claude/settings.local.json
