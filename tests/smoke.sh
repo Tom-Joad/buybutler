@@ -109,7 +109,7 @@ in_log '"ts":"[0-9T:.-]+\+0[12]:00","level":"INFO","event":"starting"' || fail "
 
 echo "== interface and API"
 R=$(http GET /); [[ $(status_of "$R") == 200 ]] || fail "/ returned $(status_of "$R")"
-for f in /static/app.js /static/css/tokens.css /static/css/fonts/Anton-Regular-latin.woff2 \
+for f in /static/app.js /static/css/tokens.css /static/css/fonts/Anton-Regular-latin.woff2 /static/css/fonts/Anton-Regular-latin-ext.woff2 /static/css/fonts/Archivo-Variable-latin-ext.woff2 \
          /static/vendor/zxing/reader.js /static/vendor/zxing/zxing_reader.wasm \
          /static/vendor/zxing/writer.js /static/vendor/zxing/zxing_writer.wasm /manifest.webmanifest \
          /sw.js; do

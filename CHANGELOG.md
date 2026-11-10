@@ -19,6 +19,10 @@ Before 1.0.0, a minor version could need action; its entry says so.
   back.
 
 ### Fixed
+- Polish and Turkish texts are drawn completely in the design fonts. The
+  Latin Extended subsets of Anton and Archivo (`ą ć ę ł ń ś ź ż ğ ş İ` and
+  more) are bundled and loaded only by pages that use such a letter, so
+  English and German pages do not fetch them.
 - Anonymous passkey login requests can no longer fill the table of open
   logins and lock out two-factor logins with `429`: they are limited per
   client address, and they may use at most half of the room.
