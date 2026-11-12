@@ -442,6 +442,7 @@
     "the name must have 1 to {NAME_MAX} characters": "de naam moet 1 tot {NAME_MAX} tekens hebben",
     "the text is required": "de tekst ontbreekt",
     "the shopping list is full: at most {ITEMS_MAX} items": "de boodschappenlijst is vol: hoogstens {ITEMS_MAX} artikelen",
-    "too many unknown access keys, try again later": "te veel onbekende toegangssleutels, probeer het later opnieuw"
+    "too many unknown access keys, try again later": "te veel onbekende toegangssleutels, probeer het later opnieuw",
+    "the request is too large": "het verzoek is te groot"
   }
 }

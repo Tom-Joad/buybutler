@@ -384,6 +384,38 @@ def test_photo_size_limit(logged_in, settings):
     assert logged_in.put(f"/api/products/{p['id']}/image", content=big, headers=H).status_code == 413
 
 
+def test_large_bodies_are_refused_before_the_login(client):
+    big = b'{"username": "tj", "password": "' + b"x" * (1024 * 1024) + b'"}'
+    r = client.post("/api/session", content=big, headers={**H, "Content-Type": "application/json"})
+    assert r.status_code == 413
+    assert r.json() == {"detail": "the request is too large"}
+    assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_large_bodies_without_a_length_are_refused(client):
+    def chunks():
+        for _ in range(20):
+            yield b"x" * 100_000
+
+    r = client.post("/api/session", content=chunks(), headers={**H, "Content-Type": "application/json"})
+    assert r.status_code == 413
+
+
+def test_bodies_below_the_limit_still_arrive(logged_in):
+    # A store's order of 2000 long keys, the largest body the interface sends.
+    keys = ["t:" + "ü" * 100] * 2000
+    r = logged_in.put("/api/shopping/order", json={"store": "", "keys": keys}, headers=H)
+    assert r.status_code == 204
+
+
+def test_pictures_keep_their_own_limit(logged_in):
+    p = make_product(logged_in)
+    r = rate(logged_in, p["id"])
+    big = JPEG + b"\x00" * (2 * 1024 * 1024)
+    assert logged_in.put(f"/api/products/{p['id']}/image", content=big, headers=H).status_code == 200
+    assert logged_in.put(f"/api/ratings/{r['id']}/photo", content=big, headers=H).status_code == 200
+
+
 def test_upload_needs_login(client):
     assert client.put("/api/products/1/image", content=JPEG, headers=H).status_code == 401
 

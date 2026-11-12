@@ -442,6 +442,7 @@
     "the name must have 1 to {NAME_MAX} characters": "il nome deve avere da 1 a {NAME_MAX} caratteri",
     "the text is required": "il testo è obbligatorio",
     "the shopping list is full: at most {ITEMS_MAX} items": "la lista della spesa è piena: al massimo {ITEMS_MAX} articoli",
-    "too many unknown access keys, try again later": "troppe chiavi di accesso sconosciute, riprova più tardi"
+    "too many unknown access keys, try again later": "troppe chiavi di accesso sconosciute, riprova più tardi",
+    "the request is too large": "la richiesta è troppo grande"
   }
 }

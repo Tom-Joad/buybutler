@@ -442,6 +442,7 @@
     "the name must have 1 to {NAME_MAX} characters": "ad 1 ile {NAME_MAX} karakter arasında olmalı",
     "the text is required": "metin gerekli",
     "the shopping list is full: at most {ITEMS_MAX} items": "alışveriş listesi dolu: en fazla {ITEMS_MAX} ürün",
-    "too many unknown access keys, try again later": "çok fazla bilinmeyen erişim anahtarı, daha sonra tekrar deneyin"
+    "too many unknown access keys, try again later": "çok fazla bilinmeyen erişim anahtarı, daha sonra tekrar deneyin",
+    "the request is too large": "istek çok büyük"
   }
 }

@@ -68,6 +68,10 @@ def set_member_role(conn: sqlite3.Connection, list_id: int, user_id: int, role: 
         "UPDATE list_members SET role = ?, updated_at = ? WHERE list_id = ? AND user_id = ?",
         (role, db.now(), list_id, user_id),
     )
+    if role == "viewer":
+        # A viewer's access keys stop working; deleted, so they don't come
+        # back to life when the user may edit again.
+        conn.execute("DELETE FROM api_tokens WHERE list_id = ? AND user_id = ?", (list_id, user_id))
 
 
 def remove_member(conn: sqlite3.Connection, list_id: int, user_id: int) -> None:
