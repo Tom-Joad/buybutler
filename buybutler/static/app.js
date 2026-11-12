@@ -527,7 +527,7 @@ async function renameShopItem(from, to, job) {
   rename(job);
   shop.local.forEach(rename);
   for (const other of await Outbox.all().catch(() => [])) {
-    if (other.id !== job.id && rename(other)) await Outbox.put(other).catch(() => {});
+    if (rename(other)) await Outbox.put(other).catch(() => {});
   }
 }
 

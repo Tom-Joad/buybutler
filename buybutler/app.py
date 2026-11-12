@@ -80,25 +80,22 @@ class BodyLimit:
                 or (scope["method"] == "PUT" and PICTURE_PATH.fullmatch(scope["path"]))):
             await self.app(scope, receive, send)
             return
-        declared = dict(scope["headers"]).get(b"content-length", b"")
+        declared = next((v for k, v in scope["headers"] if k == b"content-length"), b"")
         if declared.isdigit() and int(declared) > self.limit:
             await self.refuse(scope, receive, send)
             return
-        chunks: list[bytes] = []
-        size = 0
-        more = True
-        while more:
+        body = bytearray()
+        while True:
             message = await receive()
             if message["type"] != "http.request":
                 return  # the client went away
-            chunk = message.get("body", b"")
-            size += len(chunk)
-            if size > self.limit:
+            body += message.get("body", b"")
+            if len(body) > self.limit:
                 await self.refuse(scope, receive, send)
                 return
-            chunks.append(chunk)
-            more = message.get("more_body", False)
-        pending = {"type": "http.request", "body": b"".join(chunks), "more_body": False}
+            if not message.get("more_body", False):
+                break
+        pending = {"type": "http.request", "body": bytes(body), "more_body": False}
 
         async def replay():
             nonlocal pending

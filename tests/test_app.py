@@ -410,8 +410,10 @@ def test_bodies_below_the_limit_still_arrive(logged_in):
 
 def test_pictures_keep_their_own_limit(logged_in):
     p = make_product(logged_in)
+    r = rate(logged_in, p["id"])
     big = JPEG + b"\x00" * (2 * 1024 * 1024)
     assert logged_in.put(f"/api/products/{p['id']}/image", content=big, headers=H).status_code == 200
+    assert logged_in.put(f"/api/ratings/{r['id']}/photo", content=big, headers=H).status_code == 200
 
 
 def test_upload_needs_login(client):

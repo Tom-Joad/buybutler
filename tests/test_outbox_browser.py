@@ -12,13 +12,14 @@ import httpx
 import pytest
 import uvicorn
 
-from buybutler import auth, config, db
+from buybutler import config
 from buybutler.app import create_app
 
-sync_api = pytest.importorskip("playwright.sync_api")
+from .test_app import H, PASSWORD
+from .test_lists import add_user
+from .test_shopping import add, items
 
-PASSWORD = "correct horse battery"
-H = {"X-Buybutler": "1"}
+sync_api = pytest.importorskip("playwright.sync_api")
 
 
 @pytest.fixture(scope="module")
@@ -36,8 +37,7 @@ def server(tmp_path_factory):
     thread.start()
     while not server.started:
         time.sleep(0.05)
-    with db.session(settings.database) as conn:
-        auth.create_user(conn, "tj", PASSWORD)
+    add_user(settings, "tj")
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True
     thread.join(10)
@@ -57,7 +57,7 @@ def api(server):
     with httpx.Client(base_url=server, headers=H) as c:
         assert c.post("/api/session", json={"username": "tj", "password": PASSWORD}).status_code == 200
         c.headers["X-Buybutler-List"] = str(c.get("/api/lists").json()["lists"][0]["id"])
-        for item in c.get("/api/shopping").json()["items"]:
+        for item in items(c):
             c.delete(f"/api/shopping/{item['id']}")
         yield c
 
@@ -78,6 +78,12 @@ def page(server, browser, api):
     assert errors == []
 
 
+def remove(page, item_id: str) -> None:
+    """Removes a shopping item through the outbox, as the interface does."""
+    page.evaluate("async (id) => { shopSend('remove', { method: 'DELETE', path: `/api/shopping/${id}` });"
+                  " await shopChain; }", item_id)
+
+
 def outbox(page) -> list[dict]:
     return page.evaluate("async () => (await Outbox.all()).map((j) => ({ label: j.label, error: j.error }))")
 
@@ -94,7 +100,7 @@ def sent(page) -> list[dict]:
 
 
 def test_a_job_is_sent_once_when_the_outbox_syncs_meanwhile(page, api):
-    item = api.post("/api/shopping", json={"text": "Bread"}).json()
+    item = add(api, text="Bread").json()
     deletes: list[str] = []
 
     def slow_delete(route, request):
@@ -106,18 +112,17 @@ def test_a_job_is_sent_once_when_the_outbox_syncs_meanwhile(page, api):
         route.continue_()
 
     page.route("**/api/shopping/*", slow_delete)
-    page.evaluate("async (id) => { shopSend('remove', { method: 'DELETE', path: `/api/shopping/${id}` });"
-                  " await shopChain; await syncOutbox(); }", item["id"])
+    remove(page, item["id"])
+    page.evaluate("syncOutbox()")
     assert len(deletes) == 1
     assert outbox(page) == []
-    assert api.get("/api/shopping").json()["items"] == []
+    assert items(api) == []
 
 
 def test_a_delete_of_an_item_gone_already_counts_as_done(page, api):
-    item = api.post("/api/shopping", json={"text": "Milk"}).json()
+    item = add(api, text="Milk").json()
     page.context.set_offline(True)
-    page.evaluate("async (id) => { shopSend('remove', { method: 'DELETE', path: `/api/shopping/${id}` });"
-                  " await shopChain; }", item["id"])
+    remove(page, item["id"])
     assert len(outbox(page)) == 1
     # Another phone removed it meanwhile.
     assert api.delete(f"/api/shopping/{item['id']}").status_code == 204
@@ -137,8 +142,7 @@ def test_a_tick_made_offline_follows_another_phones_entry(page, api):
     }""", product)
     assert len(outbox(page)) == 2
     # Meanwhile another phone puts the same product on the list.
-    theirs = api.post("/api/shopping", json={"product_id": product["id"]}).json()
+    theirs = add(api, product_id=product["id"]).json()
     page.context.set_offline(False)
     assert sent(page) == []
-    items = api.get("/api/shopping").json()["items"]
-    assert [(i["id"], i["checked"]) for i in items] == [(theirs["id"], True)]
+    assert [(i["id"], i["checked"]) for i in items(api)] == [(theirs["id"], True)]
