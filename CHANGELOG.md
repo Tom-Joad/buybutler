@@ -6,7 +6,7 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
-## [Unreleased]
+## [1.3.0] - Unreleased
 
 ### Changed
 - The image is built on the current linuxserver.io Alpine 3.24 base.
