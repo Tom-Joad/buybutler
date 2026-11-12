@@ -270,6 +270,16 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def lock_for_write(conn: sqlite3.Connection) -> None:
+    """Take the write lock before reading what a write depends on, such as
+    the number of owners before one steps down. sqlite3 begins a
+    transaction only at the first write, so two requests could both read
+    the count, then both write. A transaction that has written holds the
+    lock already."""
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
+
+
 def migrate(path: Path) -> tuple[int, int]:
     """Bring the database to the newest schema. Returns (before, after)."""
     path.parent.mkdir(parents=True, exist_ok=True)

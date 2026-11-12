@@ -6,6 +6,32 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Fixed
+- A price for a tiny quantity (such as `0.0000001 g`) made the product
+  list, the product and the offline copy fail with an error for everyone in
+  the list. A quantity is now at least `0.001`; a price stored before shows
+  no price per unit instead of an error.
+- Two owners stepping down at the same time could leave a list without an
+  owner, and two admins the installation without an admin. Such changes now
+  wait for each other.
+- The product list shows at most 1000 products and now says when there are
+  more, instead of leaving them out silently.
+- Two pictures uploaded at the same time for one product or rating, or an
+  upload that failed while saving, left a picture file behind in `/config`.
+  So did a picture uploaded while the Open Food Facts picture was being
+  downloaded, which also replaced the uploaded one.
+- A failed Open Food Facts lookup or picture download logs the kind of
+  error and the HTTP status, instead of only a link to a help page.
+
+### Changed
+- The image is built on the current linuxserver.io Alpine 3.24 base.
+
+### Docs
+- README: `user passwd` also removes the user's access keys; the layout
+  table lists every module.
+
 ## [1.2.2] - 2026-11-10
 
 ### Security

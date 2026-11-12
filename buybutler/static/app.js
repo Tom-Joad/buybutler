@@ -2999,7 +2999,9 @@ async function loadList() {
   let note = "";
   try {
     if (state.offline) throw new NetworkError();
-    ({ products } = await api("GET", `/api/products?${q}`));
+    let more;
+    ({ products, more } = await api("GET", `/api/products?${q}`));
+    if (more) note = ` · ${t("products.more")}`;
   } catch (err) {
     const copy = err.offline ? await Known.load() : null;
     if (!copy) throw err;

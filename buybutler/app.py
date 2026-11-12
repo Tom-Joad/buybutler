@@ -25,6 +25,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 SERVICE_WORKER = Path(__file__).parent / "sw.js"
 # Rated products a phone keeps for offline use, at most.
 OFFLINE_MAX = 5000
+# Products in one answer of the list view; the page says when there are more.
+LIST_MAX = 1000
 # Loaded only to set up an authenticator app; not worth keeping offline.
 NOT_OFFLINE = {"vendor/zxing/writer.js", "vendor/zxing/zxing_writer.wasm"}
 COOKIE = "buybutler_session"
@@ -357,12 +359,16 @@ class ShoppingOrder(BaseModel):
 
 ItemId = Annotated[str, Field(pattern=r"^[A-Za-z0-9-]{16,64}$")]
 
+# The smallest quantity a price may be for (a milligram, a millilitre). A
+# tinier one made the price per unit too long to compute.
+QUANTITY_MIN = 0.001
+
 
 class PriceIn(BaseModel):
     client_id: ClientId = None
     # Cents, up to 100 000.00 in the currency.
     amount_cents: int = Field(ge=0, le=10_000_000)
-    quantity: float | None = Field(default=None, gt=0, le=1_000_000)
+    quantity: float | None = Field(default=None, ge=QUANTITY_MIN, le=1_000_000)
     unit: str = ""
     on_offer: bool = False
     store: str = ""
@@ -385,7 +391,7 @@ class PriceIn(BaseModel):
 
 class PricePatch(BaseModel):
     amount_cents: int | None = Field(default=None, ge=0, le=10_000_000)
-    quantity: float | None = Field(default=None, gt=0, le=1_000_000)
+    quantity: float | None = Field(default=None, ge=QUANTITY_MIN, le=1_000_000)
     clear_quantity: bool = False
     unit: str | None = None
     on_offer: bool | None = None
@@ -1221,6 +1227,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     def change_user(user_id: int, body: UserPatch, request: Request, user: CurrentUser, conn: Conn) -> dict:
         admin_only(user)
         confirm_password(request, conn, user, body.admin_password)
+        db.lock_for_write(conn)  # two admins stepping down at once would leave none
         row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
         if row is None:
             raise HTTPException(404, "user not found")
@@ -1291,8 +1298,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             return {"product": None, "suggestion": None, "lookup": "disabled"}
         try:
             suggestion = lookup_client.lookup(conn, barcode)
-        except (httpx.HTTPError, ValueError):
-            log.warning("lookup_failed", exc_info=True)
+        except (httpx.HTTPError, ValueError) as exc:
+            log.warning("lookup_failed", extra=off.error_fields(exc))
             return {"product": None, "suggestion": None, "lookup": "failed"}
         if suggestion is None:
             return {"product": None, "suggestion": None, "lookup": "not_found"}
@@ -1342,7 +1349,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             # By the last price paid, cheapest first; products without a price last.
             "price": "last_price IS NULL, last_price ASC, p.name COLLATE NOCASE ASC",
         }[sort]
-        return {"products": product_rows(conn, current, where, args, order, 1000)}
+        products = product_rows(conn, current, where, args, order, LIST_MAX + 1)
+        return {"products": products[:LIST_MAX], "more": len(products) > LIST_MAX}
 
     def product_rows(conn: sqlite3.Connection, current: tuple[int, str], where: list[str], args: list,
                      order: str, limit: int) -> list[dict]:
@@ -1412,15 +1420,20 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         except images.ImageError:
             log.warning("image_rejected", extra={"product_id": product_id})
             return
-        with db.session(settings.database) as conn:
-            row = conn.execute("SELECT image FROM products WHERE id = ?", (product_id,)).fetchone()
-            if row is not None and row["image"] is None:
-                conn.execute(
-                    "UPDATE products SET image = ?, updated_at = ? WHERE id = ?", (name, db.now(), product_id)
-                )
-                log.info("product_image_downloaded", extra={"product_id": product_id, "bytes": len(data)})
-                return
-        images.delete(settings.images, "products", name)
+        kept = False
+        try:
+            # One statement: an upload between a read and the write would
+            # otherwise be overwritten and its file left behind.
+            with db.session(settings.database) as conn:
+                kept = conn.execute(
+                    "UPDATE products SET image = ?, updated_at = ? WHERE id = ? AND image IS NULL",
+                    (name, db.now(), product_id),
+                ).rowcount == 1
+        finally:
+            if not kept:
+                images.delete(settings.images, "products", name)
+        if kept:
+            log.info("product_image_downloaded", extra={"product_id": product_id, "bytes": len(data)})
 
     @app.post("/api/products", status_code=201)
     def create_product(body: ProductIn, user: CurrentUser, current: CurrentList, conn: Conn,
@@ -1494,8 +1507,8 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
                 lookup = "found" if suggestion else "not_found"
                 if suggestion:
                     suggestion = suggestion.for_language(user.language)
-            except (httpx.HTTPError, ValueError):
-                log.warning("lookup_failed", exc_info=True)
+            except (httpx.HTTPError, ValueError) as exc:
+                log.warning("lookup_failed", extra=off.error_fields(exc))
                 lookup = "failed"
         # Open Food Facts data is cut to the field lengths, not refused.
         def clip(field: str, limit: int) -> str:
@@ -1600,15 +1613,31 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         with db.session(settings.database) as conn:
             _load_product(conn, session_of(request, conn, response), product_id, write=True)
 
-    def store_product_image(request: Request, response: Response, product_id: int, data: bytes) -> dict:
-        with db.session(settings.database) as conn:
-            user = session_of(request, conn, response)
-            row = _load_product(conn, user, product_id, write=True)
-            name = images.save(settings.images, "products", data)
-            conn.execute("UPDATE products SET image = ?, updated_at = ? WHERE id = ?", (name, db.now(), product_id))
-            result = _product_json(conn, _load_product(conn, user, product_id))
-        images.delete(settings.images, "products", row["image"])
+    def store_picture(request: Request, response: Response, kind: str, data: bytes, attach) -> dict:
+        """Saves the picture and lets `attach(conn, user, name)` record it;
+        returns its answer and removes the picture it replaced. The write
+        lock comes before the old name is read, so two uploads at once
+        can't both miss the other's file; a failed write removes the new
+        file again."""
+        name = images.save(settings.images, kind, data)
+        try:
+            with db.session(settings.database) as conn:
+                user = session_of(request, conn, response)
+                db.lock_for_write(conn)
+                old, result = attach(conn, user, name)
+        except BaseException:
+            images.delete(settings.images, kind, name)
+            raise
+        images.delete(settings.images, kind, old)
         return result
+
+    def store_product_image(request: Request, response: Response, product_id: int, data: bytes) -> dict:
+        def attach(conn: sqlite3.Connection, user: auth.User, name: str) -> tuple[str | None, dict]:
+            old = _load_product(conn, user, product_id, write=True)["image"]
+            conn.execute("UPDATE products SET image = ?, updated_at = ? WHERE id = ?", (name, db.now(), product_id))
+            return old, _product_json(conn, _load_product(conn, user, product_id))
+
+        return store_picture(request, response, "products", data, attach)
 
     @app.put("/api/products/{product_id}/image")
     async def put_product_image(product_id: int, request: Request, response: Response) -> dict:
@@ -1777,14 +1806,12 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             _load_rating(conn, session_of(request, conn, response), rating_id, write=True)
 
     def store_rating_photo(request: Request, response: Response, rating_id: int, data: bytes) -> dict:
-        with db.session(settings.database) as conn:
-            user = session_of(request, conn, response)
-            row = _load_rating(conn, user, rating_id, write=True)
-            name = images.save(settings.images, "ratings", data)
+        def attach(conn: sqlite3.Connection, user: auth.User, name: str) -> tuple[str | None, dict]:
+            old = _load_rating(conn, user, rating_id, write=True)["photo"]
             conn.execute("UPDATE ratings SET photo = ?, updated_at = ? WHERE id = ?", (name, db.now(), rating_id))
-            result = _rating(_load_rating(conn, user, rating_id))
-        images.delete(settings.images, "ratings", row["photo"])
-        return result
+            return old, _rating(_load_rating(conn, user, rating_id))
+
+        return store_picture(request, response, "ratings", data, attach)
 
     @app.put("/api/ratings/{rating_id}/photo")
     async def put_rating_photo(rating_id: int, request: Request, response: Response) -> dict:

@@ -8,7 +8,7 @@ was for, as a number and a free unit; weights and volumes are converted, so
 from __future__ import annotations
 
 import sqlite3
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 # Units that convert into a common base, and the factor to it. Anything else
 # is compared only with entries in the same unit (lower case, trimmed).
@@ -49,7 +49,12 @@ def unit_price(row: sqlite3.Row) -> dict | None:
         return None
     amount, per = based
     # Half up, as on a price tag; round() would round 872.5 to 872.
-    cents = (Decimal(row["amount_cents"]) / Decimal(repr(amount))).quantize(Decimal(1), ROUND_HALF_UP)
+    try:
+        cents = (Decimal(row["amount_cents"]) / Decimal(repr(amount))).quantize(Decimal(1), ROUND_HALF_UP)
+    except InvalidOperation:
+        # More digits than Decimal keeps: a quantity stored before
+        # QUANTITY_MIN existed. Better no unit price than a broken list.
+        return None
     return {"amount_cents": int(cents), "per": per}
 
 

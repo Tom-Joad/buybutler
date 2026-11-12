@@ -57,6 +57,7 @@ def remove_files(root: Path, files: list[tuple[str, str]]) -> None:
 
 
 def set_member_role(conn: sqlite3.Connection, list_id: int, user_id: int, role: str) -> None:
+    db.lock_for_write(conn)
     current = conn.execute(
         "SELECT role FROM list_members WHERE list_id = ? AND user_id = ?", (list_id, user_id)
     ).fetchone()
@@ -71,6 +72,7 @@ def set_member_role(conn: sqlite3.Connection, list_id: int, user_id: int, role: 
 
 
 def remove_member(conn: sqlite3.Connection, list_id: int, user_id: int) -> None:
+    db.lock_for_write(conn)
     current = conn.execute(
         "SELECT role FROM list_members WHERE list_id = ? AND user_id = ?", (list_id, user_id)
     ).fetchone()
@@ -88,6 +90,7 @@ def delete_user(conn: sqlite3.Connection, user_id: int) -> list[tuple[str, str]]
     """Delete a user. Lists only they belong to go with them; a list they
     alone own but share with others must get another owner first. Their
     ratings and prices stay, without a name."""
+    db.lock_for_write(conn)
     row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
     if row is None:
         raise ListError("no such user")
