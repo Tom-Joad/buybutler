@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -55,6 +56,61 @@ SECURITY_HEADERS = {
     ),
     "Cross-Origin-Opener-Policy": "same-origin",
 }
+
+# Request bodies other than pictures, at most. The largest real one, a
+# store's order of 2000 items, stays well below it.
+BODY_MAX = 1024 * 1024
+# Pictures come as the raw body and have their own limit (read_picture).
+PICTURE_PATH = re.compile(r"/api/(products/\d+/image|ratings/\d+/photo)")
+
+
+class BodyLimit:
+    """Refuses request bodies over `limit` bytes before a route sees them.
+
+    FastAPI reads a JSON body whole into memory before it validates it,
+    and before the session is checked, so without this anyone could make
+    the server hold any amount (a 300 MB login took over 1 GB). The body is
+    read here up to the limit and handed on from memory.
+    """
+
+    def __init__(self, app, limit: int) -> None:
+        self.app = app
+        self.limit = limit
+
+    async def __call__(self, scope, receive, send) -> None:
+        if (scope["type"] != "http" or scope["method"] in ("GET", "HEAD", "OPTIONS")
+                or (scope["method"] == "PUT" and PICTURE_PATH.fullmatch(scope["path"]))):
+            await self.app(scope, receive, send)
+            return
+        declared = next((v for k, v in scope["headers"] if k == b"content-length"), b"")
+        if declared.isdigit() and int(declared) > self.limit:
+            await self.refuse(scope, receive, send)
+            return
+        body = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return  # the client went away
+            body += message.get("body", b"")
+            if len(body) > self.limit:
+                await self.refuse(scope, receive, send)
+                return
+            if not message.get("more_body", False):
+                break
+        pending = {"type": "http.request", "body": bytes(body), "more_body": False}
+
+        async def replay():
+            nonlocal pending
+            if pending is None:
+                return await receive()
+            message, pending = pending, None
+            return message
+
+        await self.app(scope, replay, send)
+
+    async def refuse(self, scope, receive, send) -> None:
+        response = JSONResponse({"detail": "the request is too large"}, status_code=413)
+        await response(scope, receive, send)
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +720,9 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     app = FastAPI(title="Buybutler", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
     app.state.settings = settings
+    # Added before the guard, so the guard runs first and adds its headers
+    # to the 413 as well.
+    app.add_middleware(BodyLimit, limit=BODY_MAX)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):

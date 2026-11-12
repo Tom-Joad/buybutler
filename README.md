@@ -279,9 +279,10 @@ Another program can put items on the shopping list of one list, for example
 a recipe book adding the ingredients of a recipe. Under **Account**, **Access keys**, give the key a name, pick the
 list and confirm with your password. The key (`bbt_…`) is shown once; copy it
 into the other program. It works without the second factor, so keep it like
-a password and remove it when it is no longer needed. It also stops working
-when you leave the list or become a viewer there, and every key of a user is
-removed when their password changes.
+a password and remove it when it is no longer needed. It is removed when you
+leave the list or become a viewer there (making you an editor again doesn't
+bring it back), and every key of a user is removed when their password
+changes.
 
 The program sends the key in the `Authorization` header:
 
@@ -434,6 +435,7 @@ cosign verify \
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
+python -m playwright install chromium
 python -m pytest
 
 docker build -t buybutler:test .
@@ -441,7 +443,8 @@ tests/smoke.sh buybutler:test
 ```
 
 The unit tests cover the API with a temporary database and a mocked Open
-Food Facts. The smoke test needs no network: it checks the settings, the
+Food Facts; `tests/test_outbox_browser.py` runs the outbox of the interface
+in Chromium (skipped when Playwright isn't installed). The smoke test needs no network: it checks the settings, the
 switch to `PUID:PGID`, `HOME`, `TZ`, the start banner, login, a rating, the
 backup command, that data survives a restart and a re-create, and the
 ordered stop.

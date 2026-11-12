@@ -8,7 +8,17 @@ Before 1.0.0, a minor version could need action; its entry says so.
 
 ## [Unreleased]
 
+### Changed
+- The image is built on the current linuxserver.io Alpine 3.24 base.
+
 ### Fixed
+- A change sent from the phone while the outbox was being sent in the
+  background went out twice. A removed shopping item then stayed in the
+  outbox as "not sent". Removing an item that is gone already now counts as
+  done.
+- An item put on the shopping list offline and ticked there is ticked on the
+  server even when another phone put the same product on the list
+  meanwhile. Before, the tick was lost and stayed in the outbox as "not sent".
 - A price for a tiny quantity (such as `0.0000001 g`) made the product
   list, the product and the offline copy fail with an error for everyone in
   the list. A quantity is now at least `0.001`; a price stored before shows
@@ -25,8 +35,13 @@ Before 1.0.0, a minor version could need action; its entry says so.
 - A failed Open Food Facts lookup or picture download logs the kind of
   error and the HTTP status, instead of only a link to a help page.
 
-### Changed
-- The image is built on the current linuxserver.io Alpine 3.24 base.
+### Security
+- Request bodies other than pictures may have at most 1 MB; larger ones are
+  refused with `413` before they are read. Before, a request of any size,
+  also without a login, was held in memory whole.
+- An access key is removed when its user becomes a viewer of its list. Before,
+  it only stopped working, and came back to life when the user was made an
+  editor again.
 
 ### Docs
 - README: `user passwd` also removes the user's access keys; the layout

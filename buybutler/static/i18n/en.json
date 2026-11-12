@@ -443,6 +443,7 @@
     "the name must have 1 to {NAME_MAX} characters": "the name must have 1 to {NAME_MAX} characters",
     "the text is required": "the text is required",
     "the shopping list is full: at most {ITEMS_MAX} items": "the shopping list is full: at most {ITEMS_MAX} items",
-    "too many unknown access keys, try again later": "too many unknown access keys, try again later"
+    "too many unknown access keys, try again later": "too many unknown access keys, try again later",
+    "the request is too large": "the request is too large"
   }
 }
