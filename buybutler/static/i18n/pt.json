@@ -336,6 +336,8 @@
   "tf.codes_new": "Novos códigos de recuperação",
   "tf.codes_new_confirm": "Criar novos códigos de recuperação? Os antigos deixam de funcionar.",
   "tf.codes_new_done": "Novos códigos de recuperação criados; os antigos já não funcionam.",
+  "tf.keys_check": "As suas chaves de acesso continuam a funcionar sem o segundo passo. Verifique-as e remova em Chaves de acesso as que não reconhecer.",
+  "tf.keys_manage": "Ir para as chaves de acesso",
 
   "tokens.title": "Chaves de acesso",
   "tokens.help": "Permite que outro programa, como um livro de receitas, adicione itens à lista de compras de uma lista. Uma chave funciona sem o segundo passo: guarde-a como uma palavra-passe e remova-a quando o programa já não precisar dela.",

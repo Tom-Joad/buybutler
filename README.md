@@ -282,7 +282,8 @@ into the other program. It works without the second factor, so keep it like
 a password and remove it when it is no longer needed. It is removed when you
 leave the list or become a viewer there (making you an editor again doesn't
 bring it back), and every key of a user is removed when their password
-changes.
+changes. Turning on two-factor login keeps the keys; the page then lists
+them, so you can check them and remove any you don't know.
 
 The program sends the key in the `Authorization` header:
 

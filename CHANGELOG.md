@@ -42,6 +42,9 @@ Before 1.0.0, a minor version could need action; its entry says so.
 - An access key is removed when its user becomes a viewer of its list. Before,
   it only stopped working, and came back to life when the user was made an
   editor again.
+- After turning on two-factor login, the account page lists the user's
+  access keys (name, list, last use) and asks to check them, since they
+  keep working without the second factor. The keys stay.
 
 ### Docs
 - README: `user passwd` also removes the user's access keys; the layout

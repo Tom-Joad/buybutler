@@ -1912,6 +1912,8 @@ function forgetSecrets() {
   $("#tf-codes").hidden = true;
   $("#tf-code-list").replaceChildren();
   delete $("#tf-code-list").dataset.codes;
+  $("#tf-keys").hidden = true;
+  $("#tf-key-list").replaceChildren();
   $("#tk-new").hidden = true;
   $("#tk-value").textContent = "";
 }
@@ -1961,7 +1963,22 @@ function renderSecurity(sec) {
     $("#tf-code-list").replaceChildren(...sec.recovery_codes.map((code) => el("li", { text: code })));
     $("#tf-code-list").dataset.codes = sec.recovery_codes.join("\n");
   }
+  // Two-factor login just turned on: access keys still work without it.
+  if (sec.access_keys) {
+    $("#tf-keys").hidden = sec.access_keys.length === 0;
+    renderKeysToCheck(sec.access_keys);
+  }
 }
+
+function renderKeysToCheck(keys) {
+  $("#tf-key-list").replaceChildren(...keys.map((k) => el("li", {},
+    el("div", { class: "head" }, el("span", { class: "word", text: k.name })),
+    el("p", { class: "stamps", text: tokenLine(k) }))));
+}
+
+$("#tf-keys-manage").addEventListener("click", () => {
+  $("#tk-section").scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 function tfPassword() {
   const password = $("#tf-password").value;
@@ -2093,11 +2110,20 @@ function renderTokens(keys) {
         showError($("#tk-message"), err);
       }
     });
-    const used = k.last_used_at ? t("tokens.used", { time: stamp(k.last_used_at) }) : t("tokens.unused");
     return el("li", {},
       el("div", { class: "head" }, el("span", { class: "word", text: k.name }), remove),
-      el("p", { class: "stamps", text: `${t("tokens.for_list", { list: k.list_name })} · ${used}` }));
+      el("p", { class: "stamps", text: tokenLine(k) }));
   }));
+  // The list to check after turning on two-factor login follows removals.
+  if (!$("#tf-keys").hidden) {
+    renderKeysToCheck(keys);
+    $("#tf-keys").hidden = keys.length === 0;
+  }
+}
+
+function tokenLine(k) {
+  const used = k.last_used_at ? t("tokens.used", { time: stamp(k.last_used_at) }) : t("tokens.unused");
+  return `${t("tokens.for_list", { list: k.list_name })} · ${used}`;
 }
 
 $("#tk-create").addEventListener("click", async () => {
