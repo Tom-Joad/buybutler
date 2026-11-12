@@ -9,12 +9,11 @@ from buybutler import twofactor
 
 from .test_app import PASSWORD
 from .test_outbox_browser import api, browser, page, server  # noqa: F401  (fixtures)
+from .test_tokens import make_token
 
 
 def test_turning_on_two_factor_asks_to_check_the_access_keys(page, api):
-    home = api.get("/api/lists").json()["lists"][0]["id"]
-    r = api.post("/api/account/tokens", json={"name": "Recipe book", "list_id": home, "password": PASSWORD})
-    assert r.status_code == 201
+    assert make_token(api, int(api.headers["X-Buybutler-List"])).status_code == 201
     page.goto("/#/account")
     page.wait_for_selector("#tk-keys li")
     assert page.is_hidden("#tf-keys")

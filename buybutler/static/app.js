@@ -1912,6 +1912,7 @@ function forgetSecrets() {
   $("#tf-codes").hidden = true;
   $("#tf-code-list").replaceChildren();
   delete $("#tf-code-list").dataset.codes;
+  keysToCheck = null;
   $("#tf-keys").hidden = true;
   $("#tf-key-list").replaceChildren();
   $("#tk-new").hidden = true;
@@ -1965,15 +1966,20 @@ function renderSecurity(sec) {
   }
   // Two-factor login just turned on: access keys still work without it.
   if (sec.access_keys) {
-    $("#tf-keys").hidden = sec.access_keys.length === 0;
-    renderKeysToCheck(sec.access_keys);
+    keysToCheck = sec.access_keys.map((k) => k.id);
+    showKeysToCheck(sec.access_keys);
   }
 }
 
-function renderKeysToCheck(keys) {
-  $("#tf-key-list").replaceChildren(...keys.map((k) => el("li", {},
-    el("div", { class: "head" }, el("span", { class: "word", text: k.name })),
-    el("p", { class: "stamps", text: tokenLine(k) }))));
+// The keys listed to check after turning on two-factor login; a key
+// removed under Access keys leaves the list, a new one doesn't join it.
+let keysToCheck = null;
+
+function showKeysToCheck(keys) {
+  if (!keysToCheck) return;
+  const listed = keys.filter((k) => keysToCheck.includes(k.id));
+  $("#tf-keys").hidden = listed.length === 0;
+  $("#tf-key-list").replaceChildren(...listed.map((k) => tokenItem(k)));
 }
 
 $("#tf-keys-manage").addEventListener("click", () => {
@@ -2110,20 +2116,16 @@ function renderTokens(keys) {
         showError($("#tk-message"), err);
       }
     });
-    return el("li", {},
-      el("div", { class: "head" }, el("span", { class: "word", text: k.name }), remove),
-      el("p", { class: "stamps", text: tokenLine(k) }));
+    return tokenItem(k, remove);
   }));
-  // The list to check after turning on two-factor login follows removals.
-  if (!$("#tf-keys").hidden) {
-    renderKeysToCheck(keys);
-    $("#tf-keys").hidden = keys.length === 0;
-  }
+  showKeysToCheck(keys);
 }
 
-function tokenLine(k) {
+function tokenItem(k, remove = null) {
   const used = k.last_used_at ? t("tokens.used", { time: stamp(k.last_used_at) }) : t("tokens.unused");
-  return `${t("tokens.for_list", { list: k.list_name })} · ${used}`;
+  return el("li", {},
+    el("div", { class: "head" }, el("span", { class: "word", text: k.name }), remove),
+    el("p", { class: "stamps", text: `${t("tokens.for_list", { list: k.list_name })} · ${used}` }));
 }
 
 $("#tk-create").addEventListener("click", async () => {
