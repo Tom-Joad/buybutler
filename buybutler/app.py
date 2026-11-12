@@ -986,18 +986,22 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             result["recovery_codes"] = codes
         return result
 
-    def changed_second_factor(request: Request, response: Response, conn: sqlite3.Connection,
-                              user: auth.User, was_on: bool) -> list[str] | None:
-        """After a second factor was added: when two-factor login just
-        turned on, new recovery codes, and every other session ends (someone
-        who knew the password may have logged in before)."""
+    def second_factor_added(request: Request, response: Response, conn: sqlite3.Connection,
+                            user: auth.User, was_on: bool) -> dict:
+        """The answer after a second factor was added. When two-factor login
+        just turned on: new recovery codes, every other session ends
+        (someone who knew the password may have logged in before), and the
+        user's access keys are listed to be checked: they stay, and they
+        work without the second factor."""
         if was_on:
-            return None
+            return security_json(conn, user)
         codes = twofactor.new_recovery_codes(conn, user.id)
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user.id,))
         set_session_cookie(request, response, auth.start_session(conn, user.id, settings.session_days))
         log.info("two_factor_enabled", extra={"user_id": user.id})
-        return codes
+        result = security_json(conn, user, codes)
+        result["access_keys"] = tokens.listing(conn, user.id)
+        return result
 
     @app.get("/api/account/security")
     def get_security(user: CurrentUser, conn: Conn) -> dict:
@@ -1024,7 +1028,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             raise HTTPException(400, "wrong code: check the time on the phone and try the next one")
         throttle.succeeded(user.username, client, attempt)
         log.info("totp_added", extra={"user_id": user.id})
-        return security_json(conn, user, changed_second_factor(request, response, conn, user, was_on))
+        return second_factor_added(request, response, conn, user, was_on)
 
     @app.delete("/api/account/totp")
     def remove_totp(body: PasswordConfirm, request: Request, user: CurrentUser, conn: Conn) -> dict:
@@ -1056,7 +1060,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
             conn.commit()
             raise HTTPException(400, str(exc)) from None
         log.info("passkey_added", extra={"user_id": user.id, "passkey_id": passkey_id})
-        return security_json(conn, user, changed_second_factor(request, response, conn, user, was_on))
+        return second_factor_added(request, response, conn, user, was_on)
 
     @app.delete("/api/account/passkeys/{passkey_id}")
     def remove_passkey(passkey_id: int, body: PasswordConfirm, request: Request, user: CurrentUser,

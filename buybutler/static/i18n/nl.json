@@ -336,6 +336,8 @@
   "tf.codes_new": "Nieuwe herstelcodes",
   "tf.codes_new_confirm": "Nieuwe herstelcodes maken? De oude werken dan niet meer.",
   "tf.codes_new_done": "Nieuwe herstelcodes gemaakt; de oude werken niet meer.",
+  "tf.keys_check": "Je toegangssleutels blijven werken zonder tweede stap. Controleer ze en verwijder onder Toegangssleutels elke sleutel die je niet kent.",
+  "tf.keys_manage": "Naar de toegangssleutels",
 
   "tokens.title": "Toegangssleutels",
   "tokens.help": "Hiermee kan een ander programma, zoals een receptenboek, artikelen op de boodschappenlijst van een lijst zetten. Een sleutel werkt zonder tweede stap: bewaar hem als een wachtwoord en verwijder hem als het programma hem niet meer nodig heeft.",

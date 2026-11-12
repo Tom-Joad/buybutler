@@ -336,6 +336,8 @@
   "tf.codes_new": "Nuovi codici di recupero",
   "tf.codes_new_confirm": "Creare nuovi codici di recupero? Quelli vecchi smettono di funzionare.",
   "tf.codes_new_done": "Nuovi codici di recupero creati; quelli vecchi non funzionano più.",
+  "tf.keys_check": "Le tue chiavi di accesso continuano a funzionare senza il secondo fattore. Controllale e rimuovi in Chiavi di accesso quelle che non riconosci.",
+  "tf.keys_manage": "Vai alle chiavi di accesso",
 
   "tokens.title": "Chiavi di accesso",
   "tokens.help": "Permette a un altro programma, come un ricettario, di aggiungere articoli alla lista della spesa di una lista. Una chiave funziona senza il secondo fattore: conservala come una password e rimuovila quando il programma non ne ha più bisogno.",

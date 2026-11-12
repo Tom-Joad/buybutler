@@ -336,6 +336,8 @@
   "tf.codes_new": "Neue Wiederherstellungscodes",
   "tf.codes_new_confirm": "Neue Wiederherstellungscodes erstellen? Die alten gelten dann nicht mehr.",
   "tf.codes_new_done": "Neue Wiederherstellungscodes erstellt; die alten gelten nicht mehr.",
+  "tf.keys_check": "Deine Zugangsschlüssel funktionieren weiter ohne zweiten Faktor. Prüfe sie und entferne unter Zugangsschlüssel jeden, den du nicht kennst.",
+  "tf.keys_manage": "Zu den Zugangsschlüsseln",
 
   "tokens.title": "Zugangsschlüssel",
   "tokens.help": "Damit kann ein anderes Programm, zum Beispiel ein Rezeptbuch, Einträge auf die Einkaufsliste einer Liste setzen. Ein Schlüssel funktioniert ohne zweiten Faktor: wie ein Passwort aufbewahren und entfernen, wenn das Programm ihn nicht mehr braucht.",

@@ -24,6 +24,9 @@ from buybutler import auth, config, db, twofactor
 from buybutler.__main__ import main
 from buybutler.app import create_app
 
+from .test_lists import home  # noqa: F401  (fixture)
+from .test_tokens import make_token, program
+
 H = {"X-Buybutler": "1"}
 PASSWORD = "correct horse battery"
 ORIGIN = "http://localhost:8080"
@@ -528,3 +531,22 @@ def test_secrets_stay_out_of_the_log(logged_in, settings, caplog):
     assert "two_factor_enabled" in text and "login_succeeded" in text
     for value in (secret, codes[0], step["ticket"], PASSWORD, "'tj'"):
         assert value not in text
+
+
+def test_turning_on_two_factor_lists_the_access_keys_to_check(logged_in, settings, home):
+    key = make_token(logged_in, home).json()["token"]
+    r = logged_in.post("/api/account/totp", json={"password": PASSWORD}, headers=H)
+    r = logged_in.post("/api/account/totp/confirm", json={"code": current_code(settings)}, headers=H)
+    keys = r.json()["access_keys"]
+    assert [(k["name"], k["list_name"], k["last_used_at"]) for k in keys] == [("Recipe book", "Home", None)]
+    # The keys stay and keep working; the page asks to check them.
+    assert program(logged_in.app, key).get("/api/v1/shopping").status_code == 200
+    # Only when two-factor login turns on.
+    assert "access_keys" not in add_passkey(logged_in, Authenticator())
+    r = logged_in.post("/api/account/recovery-codes", json={"password": PASSWORD}, headers=H)
+    assert "access_keys" not in r.json()
+
+
+def test_a_first_passkey_lists_the_access_keys_too(logged_in, settings):
+    r = add_passkey(logged_in, Authenticator())
+    assert r["access_keys"] == [] and r["recovery_codes"]

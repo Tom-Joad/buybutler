@@ -336,6 +336,8 @@
   "tf.codes_new": "New recovery codes",
   "tf.codes_new_confirm": "Make new recovery codes? The old ones stop working.",
   "tf.codes_new_done": "New recovery codes made; the old ones no longer work.",
+  "tf.keys_check": "Your access keys keep working without the second factor. Check them, and remove any key you don't know under Access keys.",
+  "tf.keys_manage": "Go to the access keys",
 
   "tokens.title": "Access keys",
   "tokens.help": "Lets another program, such as a recipe book, put items on the shopping list of one list. A key works without the second factor: keep it like a password, and remove it when the program no longer needs it.",

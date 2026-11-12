@@ -336,6 +336,8 @@
   "tf.codes_new": "Nouveaux codes de secours",
   "tf.codes_new_confirm": "Créer de nouveaux codes de secours ? Les anciens ne fonctionneront plus.",
   "tf.codes_new_done": "Nouveaux codes de secours créés ; les anciens ne fonctionnent plus.",
+  "tf.keys_check": "Vos clés d’accès continuent de fonctionner sans deuxième facteur. Vérifiez-les et supprimez dans Clés d’accès celles que vous ne connaissez pas.",
+  "tf.keys_manage": "Aller aux clés d’accès",
 
   "tokens.title": "Clés d’accès",
   "tokens.help": "Permet à un autre programme, comme un livre de recettes, d’ajouter des articles à la liste de courses d’une liste. Une clé fonctionne sans deuxième facteur : gardez-la comme un mot de passe et supprimez-la quand le programme n’en a plus besoin.",
