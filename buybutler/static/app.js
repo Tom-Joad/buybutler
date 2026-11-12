@@ -457,12 +457,21 @@ async function runJob(job, retries) {
           { retries, list: step.list });
         if (!r.product) throw err;
         data = r.product;
+      } else if (err.status === 404 && step.method === "DELETE") {
+        data = null; // gone already: removed by another phone, or by an earlier try whose answer was lost
       } else {
         throw err;
       }
     }
     step.done = true;
     step.id = data && data.id;
+    // The product was on the shopping list already (another phone added it
+    // meanwhile): the server answers with that entry, and changes made here
+    // to ours must go to it.
+    if (step.method === "POST" && step.path === "/api/shopping" && data && step.body.client_id
+        && data.id !== step.body.client_id) {
+      await renameShopItem(step.body.client_id, data.id, job);
+    }
     if (step.keep) step.data = data; // the caller reads the answer, not only the ID
     step.file = null;
     if (step.ref === "product") state.sentProducts[job.id] = step.id;
@@ -477,6 +486,7 @@ async function runJob(job, retries) {
 // thrown; when nothing was created yet, the job is dropped so the form can
 // be corrected.
 async function submitJob(job) {
+  sending.add(job.id);
   let stored = true;
   try {
     await Outbox.put(job);
@@ -496,9 +506,35 @@ async function submitJob(job) {
     updateOutboxBadge();
     if (job.steps.some((s) => s.done)) err.partial = true;
     throw err;
+  } finally {
+    sending.delete(job.id);
   }
 }
 
+// Points the waiting changes of a shopping item at the ID the server gave
+// it: in this job, in jobs not stored yet and in the outbox.
+async function renameShopItem(from, to, job) {
+  const rename = (j) => {
+    let changed = false;
+    for (const s of j.steps) {
+      if (!s.done && s.path === `/api/shopping/${from}`) {
+        s.path = `/api/shopping/${to}`;
+        changed = true;
+      }
+    }
+    return changed;
+  };
+  rename(job);
+  shop.local.forEach(rename);
+  for (const other of await Outbox.all().catch(() => [])) {
+    if (other.id !== job.id && rename(other)) await Outbox.put(other).catch(() => {});
+  }
+}
+
+// Jobs being sent now. submitJob and syncOutbox can reach the same job at
+// once; a second copy would repeat its requests, and a repeated delete
+// would end as an error that stays in the outbox.
+const sending = new Set();
 let syncing = false;
 
 async function syncOutbox() {
@@ -506,14 +542,23 @@ async function syncOutbox() {
   syncing = true;
   try {
     const jobs = (await Outbox.all()).sort((a, b) => a.created.localeCompare(b.created));
-    for (const job of jobs) {
-      if (job.error || job.id === state.holdJob) continue;
+    for (const listed of jobs) {
+      if (listed.error || listed.id === state.holdJob || sending.has(listed.id)) continue;
+      sending.add(listed.id);
       try {
-        await runJob(job, 0);
-      } catch (err) {
-        if (err.offline || err.status === 401) break;
-        job.error = err.message;
-        await Outbox.put(job);
+        // Read again: the job may have been sent (and removed) or changed
+        // since the list was read.
+        const job = await Outbox.get(listed.id);
+        if (!job) continue;
+        try {
+          await runJob(job, 0);
+        } catch (err) {
+          if (err.offline || err.status === 401) break;
+          job.error = err.message;
+          await Outbox.put(job);
+        }
+      } finally {
+        sending.delete(listed.id);
       }
     }
   } catch {

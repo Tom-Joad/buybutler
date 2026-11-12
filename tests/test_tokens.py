@@ -79,6 +79,10 @@ def test_key_follows_the_role_in_the_list(logged_in, settings, home):
     assert p.get("/api/v1/shopping").status_code == 401
     # A viewer can't make a key for the list at all.
     assert make_token(sam, home).status_code == 404
+    # The key went with the role: editing again doesn't bring it back.
+    assert sam.get("/api/account/tokens").json() == {"tokens": []}
+    logged_in.patch(f"/api/lists/{home}/members/{sam_id}", json={"role": "editor"}, headers=H)
+    assert p.get("/api/v1/shopping").status_code == 401
 
 
 def test_keys_of_other_users_stay_apart(logged_in, settings, home):

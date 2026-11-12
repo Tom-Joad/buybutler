@@ -6,6 +6,25 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Security
+- Request bodies other than pictures may have at most 1 MB; larger ones are
+  refused with `413` before they are read. Before, a request of any size,
+  also without a login, was held in memory whole.
+- An access key is removed when its user becomes a viewer of its list. Before,
+  it only stopped working, and came back to life when the user was made an
+  editor again.
+
+### Fixed
+- A change sent from the phone while the outbox was being sent in the
+  background went out twice. A removed shopping item then stayed in the
+  outbox as "not sent". Removing an item that is gone already now counts as
+  done.
+- An item put on the shopping list offline and ticked there is ticked on the
+  server even when another phone put the same product on the list
+  meanwhile. Before, the tick was lost and stayed in the outbox as "not sent".
+
 ## [1.2.2] - 2026-11-10
 
 ### Security
