@@ -8,9 +8,9 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from buybutler import auth, db
+from buybutler import auth, db, lists
 
-from .test_app import H, JPEG, PASSWORD, make_product, rate
+from .test_app import H, JPEG, PASSWORD, make_product, rate, while_locked
 from .test_app import client, fake_off, logged_in, settings  # noqa: F401  (fixtures)
 
 
@@ -309,3 +309,33 @@ def test_admin_setting_own_password_stays_logged_in(logged_in, settings, home):
     # This session goes on with a new cookie; the other one ended.
     assert logged_in.get("/api/session").status_code == 200
     assert other.get("/api/session").status_code == 401
+
+
+
+def test_two_owners_stepping_down_at_once_leave_one(logged_in, settings, home):
+    add_user(settings, "sam")
+    share(logged_in, home, "sam", "owner")
+    with db.session(settings.database) as conn:
+        ids = [conn.execute("SELECT id FROM users WHERE username = ?", (n,)).fetchone()[0] for n in ("tj", "sam")]
+
+    def step_down(user_id: int):
+        with db.session(settings.database) as conn:
+            lists.set_member_role(conn, home, user_id, "editor")
+
+    results = while_locked(settings, *(lambda u=u: step_down(u) for u in ids))
+    assert sum(isinstance(r, lists.ListError) for r in results) == 1
+    with db.session(settings.database) as conn:
+        assert lists.owners(conn, home) == 1
+
+
+def test_two_admins_stepping_down_at_once_leave_one(logged_in, settings, home):
+    add_user(settings, "sam", "admin")
+    sam = login(logged_in.app, "sam")
+    users = {u["username"]: u["id"] for u in logged_in.get("/api/users").json()["users"]}
+    body = {"role": "member", "admin_password": PASSWORD}
+    results = while_locked(settings, *(
+        lambda c=c, n=n: c.patch(f"/api/users/{users[n]}", json=body, headers=H).status_code
+        for c, n in ((logged_in, "tj"), (sam, "sam"))))
+    assert sorted(results) == [200, 409]
+    with db.session(settings.database) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0] == 1

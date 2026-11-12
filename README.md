@@ -160,7 +160,7 @@ container's user, so files keep the `PUID`/`PGID` owner.
 | Command | Does |
 |---|---|
 | `user add <NAME> [--admin]` | Add a user. The first one becomes admin and gets the list "Home"; later ones start without a list |
-| `user passwd <NAME>` | Set a new password; that user's sessions end |
+| `user passwd <NAME>` | Set a new password; that user's sessions end and their access keys are removed |
 | `user list` | List users with role, `2fa` or `password`, and creation time |
 | `user reset-2fa <NAME>` | Remove a user's authenticator app, passkeys and recovery codes, for a lost phone; the password alone logs in again |
 | `user delete <NAME>` | Delete a user. Lists only they use are deleted with them; a shared list they alone own needs another owner first. Their ratings elsewhere stay, without a name |
@@ -462,12 +462,16 @@ works without it, except for the camera.
 | `buybutler/app.py` | Routes: login, second factors, lists, users, lookup, products, ratings, prices, shopping list, pictures |
 | `buybutler/db.py` | Schema, migrations, time stamps, backup |
 | `buybutler/auth.py` | Password hashing, sessions, login throttle |
+| `buybutler/tokens.py` | Access keys for other programs |
 | `buybutler/twofactor.py` | Authenticator app (TOTP), passkeys, recovery codes, login challenges |
 | `buybutler/lists.py` | Lists, members and the rules that keep them consistent |
 | `buybutler/prices.py` | Units, unit prices and the price summary |
 | `buybutler/shopping.py` | Shopping list and the remembered order per store |
 | `buybutler/off.py` | Open Food Facts client and cache |
 | `buybutler/images.py` | Stored pictures |
+| `buybutler/config.py` | Settings from the environment, checked at start |
+| `buybutler/logging_setup.py` | JSON log lines |
+| `buybutler/__main__.py` | The `buybutler` command: `run`, `user …`, `backup` |
 | `buybutler/static/` | Interface without a build step, stylesheets, fonts, icons |
 | `buybutler/static/i18n/` | The interface's texts, one file per language |
 | `buybutler/sw.js` | Service worker: the app shell and pictures for offline use |

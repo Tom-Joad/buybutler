@@ -197,6 +197,15 @@ class Client:
                     if len(data) > IMAGE_LIMIT:
                         return None
                 return bytes(data)
-        except httpx.HTTPError:
-            log.warning("image_download_failed", exc_info=True)
+        except httpx.HTTPError as exc:
+            log.warning("image_download_failed", extra=error_fields(exc))
             return None
+
+
+def error_fields(exc: Exception) -> dict:
+    """What a failed request may log: the error's type and the HTTP status.
+    httpx puts the URL, and with it the barcode, into the message."""
+    fields: dict = {"error": type(exc).__name__}
+    if isinstance(exc, httpx.HTTPStatusError):
+        fields["status_code"] = exc.response.status_code
+    return fields

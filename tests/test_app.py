@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+import time
 
 import httpx
 import pytest
@@ -36,12 +38,15 @@ class FakeOff:
         self.calls: list[str] = []
         self.agents: list[str] = []
         self.down = False
+        self.status: int | None = None  # answer every lookup with this status
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.calls.append(str(request.url))
         self.agents.append(request.headers.get("user-agent", ""))
         if self.down:
             raise httpx.ConnectError("down")
+        if self.status is not None:
+            return httpx.Response(self.status)
         if request.url.host == "images.openfoodfacts.org":
             return httpx.Response(200, content=JPEG)
         if "/4000000000001" in request.url.path:
@@ -77,6 +82,29 @@ def logged_in(client):
     r = client.post("/api/session", json={"username": "tj", "password": PASSWORD}, headers=H)
     assert r.status_code == 200
     return client
+
+
+def while_locked(settings, *calls) -> list:
+    """Runs every call in its own thread while another connection holds the
+    write lock, so each reads before any can write; returns what each
+    returned or raised, in order."""
+    results: list = [None] * len(calls)
+
+    def run(i: int, call) -> None:
+        try:
+            results[i] = call()
+        except Exception as exc:  # noqa: BLE001  (handed to the test)
+            results[i] = exc
+
+    with db.session(settings.database) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        threads = [threading.Thread(target=run, args=(i, call)) for i, call in enumerate(calls)]
+        for t in threads:
+            t.start()
+        time.sleep(0.5)  # until every call has read and waits for the lock
+    for t in threads:
+        t.join(15)
+    return results
 
 
 def other_user_with_list(client, settings, name: str = "other") -> TestClient:
@@ -499,6 +527,20 @@ def test_lookup_not_found_and_failure(logged_in, fake_off):
     assert logged_in.get("/api/lookup", params={"barcode": "abc"}).status_code == 422
 
 
+def test_failed_lookups_log_no_barcode(logged_in, fake_off, caplog):
+    caplog.set_level("WARNING", logger="buybutler")
+    fake_off.status = 503
+    assert logged_in.get("/api/lookup", params={"barcode": "4000000000098"}).json()["lookup"] == "failed"
+    fake_off.status = None
+    fake_off.down = True
+    assert scan(logged_in, "4000000000081").json()["lookup"] == "failed"
+    failed = [r for r in caplog.records if r.getMessage() == "lookup_failed"]
+    assert [(r.error, getattr(r, "status_code", None)) for r in failed] == [
+        ("HTTPStatusError", 503), ("ConnectError", None)]
+    text = " ".join(str(r.__dict__) for r in caplog.records)
+    assert "4000000000098" not in text and "4000000000081" not in text
+
+
 def test_lookup_disabled(settings, monkeypatch, fake_off):
     monkeypatch.setenv("BUYBUTLER_OFF_LOOKUP", "false")
     app = create_app(config.load(), transport=httpx.MockTransport(fake_off.handler))
@@ -912,3 +954,64 @@ def test_service_worker_changes_with_any_static_file(tmp_path, monkeypatch):
     before = app_module.service_worker()
     (static / "app.css").write_text((static / "app.css").read_text() + "\n/* changed */\n")
     assert app_module.service_worker() != before
+
+
+def test_a_tiny_quantity_breaks_no_list(logged_in, settings):
+    p = make_product(logged_in)
+    for body in ({"amount_cents": 100, "quantity": 1e-19, "unit": "ml"},
+                 {"amount_cents": 100, "quantity": 0.0009, "unit": "g"}):
+        r = logged_in.post(f"/api/products/{p['id']}/ratings", json={"buy_again": True, "price": body}, headers=H)
+        assert r.status_code == 422, body
+    pr = add_price(logged_in, p["id"], amount_cents=10_000_000, quantity=0.001, unit="ml")
+    assert pr["unit_price"] == {"amount_cents": 10_000_000_000_000, "per": "l"}
+    assert logged_in.patch(f"/api/prices/{pr['id']}", json={"quantity": 1e-19}, headers=H).status_code == 422
+    # A price stored before the limit doesn't break the lists either.
+    with db.session(settings.database) as conn:
+        conn.execute("UPDATE prices SET quantity = 1e-19 WHERE id = ?", (pr["id"],))
+    assert logged_in.get("/api/products").status_code == 200
+    assert logged_in.get("/api/offline").status_code == 200
+    assert logged_in.get(f"/api/products/{p['id']}").json()["prices"][0]["unit_price"] is None
+
+
+def test_the_list_says_when_there_are_more(logged_in, monkeypatch):
+    from buybutler import app as app_module
+
+    monkeypatch.setattr(app_module, "LIST_MAX", 2)
+    for n in range(2):
+        make_product(logged_in, name=f"P{n}", barcode=None)
+    assert logged_in.get("/api/products").json()["more"] is False
+    make_product(logged_in, name="P2", barcode=None)
+    r = logged_in.get("/api/products").json()
+    assert len(r["products"]) == 2 and r["more"] is True
+
+
+def _pictures(settings, kind: str) -> list[str]:
+    folder = settings.images / kind
+    return sorted(f.name for f in folder.iterdir()) if folder.exists() else []
+
+
+def test_parallel_uploads_leave_one_picture(logged_in, settings):
+    p = make_product(logged_in)
+    r = rate(logged_in, p["id"])
+    targets = [f"/api/products/{p['id']}/image"] * 2 + [f"/api/ratings/{r['id']}/photo"] * 2
+    results = while_locked(settings, *(
+        lambda path=path: logged_in.put(path, content=JPEG, headers=H).status_code for path in targets))
+    assert results == [200] * 4
+    assert len(_pictures(settings, "products")) == 1 and len(_pictures(settings, "ratings")) == 1
+
+
+def test_a_failed_upload_leaves_no_picture(logged_in, settings, monkeypatch):
+    from buybutler import app as app_module
+
+    p = make_product(logged_in)
+    r = rate(logged_in, p["id"])
+
+    def broken(*_args, **_kw):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(app_module, "_product_json", broken)
+    monkeypatch.setattr(app_module, "_rating", broken)
+    no_raise = TestClient(logged_in.app, raise_server_exceptions=False, cookies=logged_in.cookies)
+    assert no_raise.put(f"/api/products/{p['id']}/image", content=JPEG, headers=H).status_code == 500
+    assert no_raise.put(f"/api/ratings/{r['id']}/photo", content=JPEG, headers=H).status_code == 500
+    assert _pictures(settings, "products") == [] and _pictures(settings, "ratings") == []
