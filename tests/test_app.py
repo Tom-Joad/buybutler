@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+import time
 
 import httpx
 import pytest
@@ -80,6 +82,29 @@ def logged_in(client):
     r = client.post("/api/session", json={"username": "tj", "password": PASSWORD}, headers=H)
     assert r.status_code == 200
     return client
+
+
+def while_locked(settings, *calls) -> list:
+    """Runs every call in its own thread while another connection holds the
+    write lock, so each reads before any can write; returns what each
+    returned or raised, in order."""
+    results: list = [None] * len(calls)
+
+    def run(i: int, call) -> None:
+        try:
+            results[i] = call()
+        except Exception as exc:  # noqa: BLE001  (handed to the test)
+            results[i] = exc
+
+    with db.session(settings.database) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        threads = [threading.Thread(target=run, args=(i, call)) for i, call in enumerate(calls)]
+        for t in threads:
+            t.start()
+        time.sleep(0.5)  # until every call has read and waits for the lock
+    for t in threads:
+        t.join(15)
+    return results
 
 
 def other_user_with_list(client, settings, name: str = "other") -> TestClient:
@@ -934,27 +959,11 @@ def _pictures(settings, kind: str) -> list[str]:
 
 
 def test_parallel_uploads_leave_one_picture(logged_in, settings):
-    import threading
-    import time
-
     p = make_product(logged_in)
     r = rate(logged_in, p["id"])
-    results: list[int] = []
     targets = [f"/api/products/{p['id']}/image"] * 2 + [f"/api/ratings/{r['id']}/photo"] * 2
-
-    def upload(path: str) -> None:
-        results.append(logged_in.put(path, content=JPEG, headers=H).status_code)
-
-    # Both uploads of a kind read the old picture before either writes,
-    # unless the write lock comes first.
-    with db.session(settings.database) as conn:
-        conn.execute("UPDATE products SET updated_at = updated_at WHERE id = ?", (p["id"],))
-        threads = [threading.Thread(target=upload, args=(path,)) for path in targets]
-        for t in threads:
-            t.start()
-        time.sleep(0.5)
-    for t in threads:
-        t.join(15)
+    results = while_locked(settings, *(
+        lambda path=path: logged_in.put(path, content=JPEG, headers=H).status_code for path in targets))
     assert results == [200] * 4
     assert len(_pictures(settings, "products")) == 1 and len(_pictures(settings, "ratings")) == 1
 

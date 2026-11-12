@@ -1429,11 +1429,11 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
                     "UPDATE products SET image = ?, updated_at = ? WHERE id = ? AND image IS NULL",
                     (name, db.now(), product_id),
                 ).rowcount == 1
+            if kept:
+                log.info("product_image_downloaded", extra={"product_id": product_id, "bytes": len(data)})
         finally:
             if not kept:
                 images.delete(settings.images, "products", name)
-        if kept:
-            log.info("product_image_downloaded", extra={"product_id": product_id, "bytes": len(data)})
 
     @app.post("/api/products", status_code=201)
     def create_product(body: ProductIn, user: CurrentUser, current: CurrentList, conn: Conn,
