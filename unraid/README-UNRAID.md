@@ -3,10 +3,11 @@
 ## Install
 
 The easy way is Community Applications: search for **Buybutler** under
-**Apps** and install it. Without Community Applications, add
-`https://github.com/Tom-Joad/unraid-templates` under **Docker → Add
-Container → Template repositories**, then pick **Buybutler** from the
-**Template** list.
+**Apps** and install it. Without Community Applications, copy
+[`buybutler.xml`](buybutler.xml) to
+`/boot/config/plugins/dockerMan/templates-user/` on the flash drive, then go
+to **Docker → Add Container** and pick **buybutler** from the template
+dropdown.
 
 Check the settings and apply. Defaults that fit Unraid: `PUID=99`,
 `PGID=100`, `UMASK=002`, config at `/mnt/user/appdata/buybutler`. The image
