@@ -6,10 +6,9 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
-## [Unreleased]
+## [1.3.2] - 2026-11-13
 
 ### Fixed
-
 - On a phone, the navigation in French, Italian, Spanish and Dutch was wider
   than the screen. When the words don't fit next to the name, the navigation
   now moves to a second line.
@@ -416,7 +415,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
-[Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.3.1...HEAD
+[1.3.2]: https://github.com/Tom-Joad/buybutler/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/Tom-Joad/buybutler/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Tom-Joad/buybutler/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/Tom-Joad/buybutler/compare/v1.2.1...v1.2.2
