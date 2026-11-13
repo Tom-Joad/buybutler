@@ -25,9 +25,10 @@ body {
   top: 0;
   z-index: 10;
   display: flex;
+  flex-wrap: wrap; /* Long words (fr, es, nl …) move the nav to a second line. */
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-14);
+  gap: var(--space-6) var(--space-14);
   padding: var(--space-12) var(--space-20);
   padding-top: max(var(--space-12), env(safe-area-inset-top));
   background: var(--surface-ink);
@@ -1023,7 +1024,7 @@ input[type="date"] {
 /* Four entries in the bar: tighter on a phone. */
 @media (max-width: 480px) {
   .bar {
-    gap: var(--space-10);
+    column-gap: var(--space-10);
     padding-left: var(--space-14);
     padding-right: var(--space-14);
   }
