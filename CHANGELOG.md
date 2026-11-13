@@ -6,6 +6,14 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Changed
+
+- The Unraid template's default for `BUYBUTLER_OFF_LANGUAGE` is now `en`,
+  like the image, the README and `.env.example`. Existing containers keep
+  the value they have.
+
 ## [1.3.0] - 2026-11-12
 
 ### Changed
@@ -400,6 +408,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[Unreleased]: https://github.com/Tom-Joad/buybutler/compare/v1.3.0...HEAD
 [1.3.0]: https://github.com/Tom-Joad/buybutler/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/Tom-Joad/buybutler/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/Tom-Joad/buybutler/compare/v1.2.0...v1.2.1
