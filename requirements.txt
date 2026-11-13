@@ -12,7 +12,7 @@ anyio==4.16.0  # via httpx, starlette
 cbor2==6.2.0.post2  # via webauthn
 certifi==2026.10.23  # via httpcore, httpx
 cffi==2.1.1  # via cryptography
-click==8.5.0  # via uvicorn
+click==8.5.1  # via uvicorn
 cryptography==50.0.2  # via pyopenssl, webauthn
 h11==0.16.0  # via httpcore, uvicorn
 httpcore==1.0.9  # via httpx
