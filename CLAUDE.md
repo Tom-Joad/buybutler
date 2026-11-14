@@ -75,6 +75,15 @@ a new format version in `FORMAT.md`.
 * The interface follows the Tom Joad Media design (`static/css/tokens.css`,
   `base.css`). Verdicts use the status colours with a word; red only for
   the wordmark's stop and the one primary button per view.
+  Deliberate exceptions (owner, 2026-11-14), not to be reported in a
+  review:
+  * The verdict on the product page is a panel filled with its status
+    colour, although status colours are otherwise marks, never grounds.
+  * The drag handle in the shopping list is the glyph `≡`, although the
+    design allows only arrows and middots as marks.
+  * The authenticator secret and the recovery codes are set in the
+    system monospace font, a third family, so similar characters stay
+    apart.
 * User text is inserted with `textContent`, never `innerHTML`.
 * Every text of the interface comes from `static/i18n/<language>.json`:
   `t("key")` in `app.js`, `data-i18n` (and `-placeholder`, `-aria-label`,
