@@ -76,7 +76,9 @@ def to_json(row: sqlite3.Row) -> dict:
     }
 
 
-SELECT = "SELECT pr.*, u.username FROM prices pr LEFT JOIN users u ON u.id = pr.user_id"
+# The user who entered it, or the name kept when that user was deleted.
+SELECT = ("SELECT pr.*, COALESCE(u.username, NULLIF(pr.user_name, '')) AS username"
+          " FROM prices pr LEFT JOIN users u ON u.id = pr.user_id")
 ORDER = "ORDER BY pr.bought_on DESC, pr.created_at DESC, pr.id DESC"
 
 

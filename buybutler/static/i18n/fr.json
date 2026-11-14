@@ -373,6 +373,7 @@
   "users.reset_2fa_confirm": "Retirer l'application d'authentification, les clés d'accès et les codes de secours de {name} ? Son mot de passe suffira de nouveau pour se connecter.",
   "users.reset_2fa_done": "Connexion à deux facteurs de {name} retirée.",
   "users.delete_confirm": "Supprimer {name} ? Les listes que seul cet utilisateur utilise sont aussi supprimées.",
+  "users.delete_keep_name": "Le nom {name} doit-il rester sur ses évaluations et ses prix dans les listes partagées ?\n\nOK : garder le nom\nAnnuler : retirer le nom",
   "users.two_factor": "deux facteurs",
   "users.created": "créé le {time}",
 

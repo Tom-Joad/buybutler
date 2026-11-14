@@ -373,6 +373,7 @@
   "users.reset_2fa_confirm": "De authenticator-app, passkeys en herstelcodes van {name} verwijderen? Dan logt het wachtwoord alleen weer in.",
   "users.reset_2fa_done": "Inloggen in twee stappen van {name} verwijderd.",
   "users.delete_confirm": "{name} verwijderen? Lijsten die alleen deze gebruiker gebruikt, worden ook verwijderd.",
+  "users.delete_keep_name": "Moet de naam {name} blijven staan bij de beoordelingen en prijzen in gedeelde lijsten?\n\nOK: naam behouden\nAnnuleren: naam verwijderen",
   "users.two_factor": "twee stappen",
   "users.created": "aangemaakt {time}",
 

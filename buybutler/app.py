@@ -173,6 +173,12 @@ class AdminConfirm(BaseModel):
     admin_password: AdminPassword
 
 
+class UserDelete(AdminConfirm):
+    # Whether the user's name stays on their ratings and prices in lists
+    # that go on without them.
+    keep_name: bool = False
+
+
 class UserIn(AdminConfirm):
     username: str = Field(max_length=auth.USERNAME_MAX)
     password: str = Field(max_length=1024)
@@ -531,7 +537,8 @@ def _rating(row: sqlite3.Row) -> dict:
 
 
 RATING_SELECT = (
-    "SELECT r.*, u.username FROM ratings r LEFT JOIN users u ON u.id = r.user_id"
+    "SELECT r.*, COALESCE(u.username, NULLIF(r.user_name, '')) AS username"
+    " FROM ratings r LEFT JOIN users u ON u.id = r.user_id"
 )
 
 # The verdict that counts is the newest rating: by the day it was given,
@@ -1342,18 +1349,18 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
         return users_json(conn)
 
     @app.delete("/api/users/{user_id}", status_code=204)
-    def delete_user(user_id: int, body: AdminConfirm, request: Request, user: CurrentUser, conn: Conn) -> None:
+    def delete_user(user_id: int, body: UserDelete, request: Request, user: CurrentUser, conn: Conn) -> None:
         admin_only(user)
         confirm_password(request, conn, user, body.admin_password)
         if user_id == user.id:
             raise HTTPException(409, "you can't delete yourself")
         try:
-            files = lists.delete_user(conn, user_id)
+            files = lists.delete_user(conn, user_id, body.keep_name)
         except lists.ListError as exc:
             raise HTTPException(409 if "no such" not in str(exc) else 404, str(exc)) from None
         conn.commit()
         lists.remove_files(settings.images, files)
-        log.info("user_deleted", extra={"user_id": user_id})
+        log.info("user_deleted", extra={"user_id": user_id, "name_kept": body.keep_name})
 
     # ---- lookup ------------------------------------------------------------
 

@@ -333,6 +333,13 @@ MIGRATIONS: list[str] = [
         UPDATE lists SET export_rev = export_rev + 1 WHERE id = OLD.list_id;
     END;
     """,
+    # 10: the name of a deleted user, kept on what they entered when the
+    # admin chose so; '' while the user exists or when the name was not kept.
+    """
+    ALTER TABLE products ADD COLUMN created_by_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE ratings ADD COLUMN user_name TEXT NOT NULL DEFAULT '';
+    ALTER TABLE prices ADD COLUMN user_name TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 

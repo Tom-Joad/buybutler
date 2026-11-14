@@ -373,6 +373,7 @@
   "users.reset_2fa_confirm": "{name} kullanıcısının doğrulama uygulaması, geçiş anahtarları ve kurtarma kodları kaldırılsın mı? Giriş için yine yalnızca parola yeterli olur.",
   "users.reset_2fa_done": "{name} kullanıcısının iki adımlı girişi kaldırıldı.",
   "users.delete_confirm": "{name} silinsin mi? Yalnızca bu kullanıcının kullandığı listeler de silinir.",
+  "users.delete_keep_name": "{name} adı, paylaşılan listelerdeki puanlarında ve fiyatlarında kalsın mı?\n\nTamam: adı koru\nİptal: adı kaldır",
   "users.two_factor": "iki adımlı",
   "users.created": "oluşturuldu {time}",
 

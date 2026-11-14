@@ -172,7 +172,7 @@ container's user, so files keep the `PUID`/`PGID` owner.
 | `user passwd <NAME>` | Set a new password; that user's sessions end and their access keys are removed |
 | `user list` | List users with role, `2fa` or `password`, and creation time |
 | `user reset-2fa <NAME>` | Remove a user's authenticator app, passkeys and recovery codes, for a lost phone; the password alone logs in again |
-| `user delete <NAME>` | Delete a user. Lists only they use are deleted with them; a shared list they alone own needs another owner first. Their ratings elsewhere stay, without a name |
+| `user delete <NAME> [--keep-name \| --clear-name]` | Delete a user. Lists only they use are deleted with them; a shared list they alone own needs another owner first. Their ratings and prices elsewhere stay; the command asks whether their name stays on them (`--keep-name`) or is removed (`--clear-name`, also what a script without either option gets) |
 | `backup` | Write a consistent copy of the database to `/config/backups/`, and bring the readable copy up to date |
 | `export` | Write the readable copy now and put right every file in it that differs from the database |
 
@@ -202,6 +202,10 @@ members, after its name is typed to confirm. Every rating shows who made it.
 
 Users are created by admins (**Account → Users** or the `user add`
 command); a new user creates their own lists or is added to one.
+
+When an admin deletes a user, the lists only that user uses go with them.
+What they rated and paid in lists that stay is kept, and Buybutler asks
+whether their name stays on it or is removed.
 
 **Upgrading from 0.6:** the first start migrates by itself. The household
 becomes the list "Home"; the admin becomes its owner, every other user an

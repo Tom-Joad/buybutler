@@ -68,7 +68,7 @@ prices:
 | `source` | `manual` (typed in) or `openfoodfacts` (looked up by barcode) |
 | `photo` | Path to the product picture, from this file's folder |
 | `created`, `updated` | Time stamps in UTC, ISO 8601 |
-| `created_by` | User name of who added the product; missing when that user was deleted |
+| `created_by` | User name of who added the product; missing when that user was deleted and the name was not kept |
 
 ### ratings
 
@@ -78,7 +78,7 @@ Oldest first; the newest is the verdict that counts.
 | --- | --- |
 | `id` | The rating's number |
 | `date` | The day of the rating |
-| `by` | User name; missing when that user was deleted |
+| `by` | User name; missing when that user was deleted and the name was not kept |
 | `buy_again` | `true`: buy again, `false`: don't |
 | `stars` | 1 to 5, optional |
 | `store`, `reason` | Optional texts |
@@ -93,7 +93,7 @@ Oldest first.
 | --- | --- |
 | `id` | The price's number |
 | `date` | The day of the purchase |
-| `by` | User name; missing when that user was deleted |
+| `by` | User name; missing when that user was deleted and the name was not kept |
 | `amount` | What was paid, in the currency named in the list's `list.md` |
 | `quantity`, `unit` | What the amount was for (`500`, `g`), optional |
 | `offer` | `true` when it was an offer price; left out otherwise |

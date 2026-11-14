@@ -244,6 +244,37 @@ def test_a_deleted_user_leaves_the_records_without_a_name(logged_in, settings):
     assert [m["user"] for m in header(settings.export_dir / "1-home" / "list.md")["members"]] == ["tj"]
 
 
+def test_a_deleted_user_keeps_the_name_when_asked(logged_in, settings):
+    with db.session(settings.database) as conn:
+        auth.create_user(conn, "sam", PASSWORD)
+        sam = conn.execute("SELECT id FROM users WHERE username = 'sam'").fetchone()[0]
+    logged_in.post("/api/lists/1/members", json={"username": "sam", "role": "editor"}, headers=H)
+    c = TestClient(logged_in.app)
+    c.post("/api/session", json={"username": "sam", "password": PASSWORD}, headers=H)
+    c.headers["X-Buybutler-List"] = "1"
+    p = make_product(c)
+    rate(c, p["id"])
+    price(c, p["id"])
+    before = logged_in.get(f"/api/products/{p['id']}").json()
+    run(settings)
+
+    r = logged_in.request("DELETE", f"/api/users/{sam}", json={"admin_password": PASSWORD, "keep_name": True},
+                          headers=H)
+    assert r.status_code == 204, r.text
+    after = logged_in.get(f"/api/products/{p['id']}").json()
+    assert after["rating"]["user"] == "sam" and after["prices"][0]["user"] == "sam"
+    # Keeping the name is no change to the record: its time stamps stay.
+    assert after["rating"]["updated_at"] == before["rating"]["updated_at"]
+    assert after["updated_at"] == before["updated_at"]
+    assert pending(settings)[0] == [p["id"]]
+    run(settings)
+    data = header(product_file(settings, p["id"]))
+    assert data["created_by"] == "sam" and data["ratings"][0]["by"] == "sam" and data["prices"][0]["by"] == "sam"
+    # A new user of that name is someone else; the old records keep the name, the new ones are theirs.
+    with db.session(settings.database) as conn:
+        assert conn.execute("SELECT user_id, user_name FROM ratings").fetchone()[:] == (None, "sam")
+
+
 # ---- when files are written --------------------------------------------------
 
 

@@ -23,8 +23,14 @@ Before 1.0.0, a minor version could need action; its entry says so.
     command `buybutler export` writes the copy by hand.
   - `buybutler backup` brings the copy up to date as well.
 
+- Deleting a user asks whether their name stays on their ratings and prices
+  in lists that go on without them, or is removed as before: a second
+  question under **Account → Users**, and `--keep-name` or `--clear-name`
+  for `buybutler user delete` (a script that passes neither removes the
+  name, as before).
+
 ### Changed
-- The database gets a new schema version (9). Versions before this one no
+- The database gets a new schema version (10). Versions before this one no
   longer start on a database this version has opened; to be able to go back,
   run `buybutler backup` before the update and keep the file.
 

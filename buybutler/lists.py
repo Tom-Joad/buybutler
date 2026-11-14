@@ -90,12 +90,13 @@ def remove_member(conn: sqlite3.Connection, list_id: int, user_id: int) -> None:
     conn.execute("DELETE FROM api_tokens WHERE list_id = ? AND user_id = ?", (list_id, user_id))
 
 
-def delete_user(conn: sqlite3.Connection, user_id: int) -> list[tuple[str, str]]:
+def delete_user(conn: sqlite3.Connection, user_id: int, keep_name: bool = False) -> list[tuple[str, str]]:
     """Delete a user. Lists only they belong to go with them; a list they
     alone own but share with others must get another owner first. Their
-    ratings and prices stay, without a name."""
+    ratings and prices in other lists stay: with their name when
+    `keep_name`, otherwise without one."""
     db.lock_for_write(conn)
-    row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+    row = conn.execute("SELECT role, username FROM users WHERE id = ?", (user_id,)).fetchone()
     if row is None:
         raise ListError("no such user")
     if row["role"] == "admin" and conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'").fetchone()[0] == 1:
@@ -112,5 +113,10 @@ def delete_user(conn: sqlite3.Connection, user_id: int) -> list[tuple[str, str]]
         elif member["role"] == "owner" and owners(conn, member["list_id"]) == 1:
             name = conn.execute("SELECT name FROM lists WHERE id = ?", (member["list_id"],)).fetchone()[0]
             raise ListError(f"the user is the only owner of the shared list {name!r}; make someone else owner first")
+    if keep_name:
+        # The time stamps stay: the records themselves didn't change.
+        conn.execute("UPDATE products SET created_by_name = ? WHERE created_by = ?", (row["username"], user_id))
+        conn.execute("UPDATE ratings SET user_name = ? WHERE user_id = ?", (row["username"], user_id))
+        conn.execute("UPDATE prices SET user_name = ? WHERE user_id = ?", (row["username"], user_id))
     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     return files

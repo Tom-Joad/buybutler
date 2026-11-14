@@ -373,6 +373,7 @@
   "users.reset_2fa_confirm": "Usunąć aplikację uwierzytelniającą, klucze dostępu i kody odzyskiwania użytkownika {name}? Znowu wystarczy samo hasło.",
   "users.reset_2fa_done": "Usunięto logowanie dwuetapowe użytkownika {name}.",
   "users.delete_confirm": "Usunąć {name}? Listy używane tylko przez tego użytkownika też zostaną usunięte.",
+  "users.delete_keep_name": "Czy nazwa {name} ma pozostać przy ocenach i cenach na współdzielonych listach?\n\nOK: zachowaj nazwę\nAnuluj: usuń nazwę",
   "users.two_factor": "dwa etapy",
   "users.created": "utworzono {time}",
 
