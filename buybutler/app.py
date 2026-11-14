@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
-from . import __version__, auth, config, db, images, lists, off, prices, shopping, tokens, twofactor
+from . import __version__, auth, config, db, export, images, lists, off, prices, shopping, tokens, twofactor
 
 log = logging.getLogger("buybutler")
 
@@ -700,6 +700,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     # in the challenge table, and they need no password.
     options_throttle = auth.LoginThrottle(per_client=30)
     lookup_client = off.Client(settings.off_language, transport=transport)
+    exporter = export.Exporter(settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -713,13 +714,19 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
                 "no_user_yet",
                 extra={"hint": "create one: docker exec -it buybutler buybutler user add <name>"},
             )
+        if settings.export:
+            exporter.start()
+        else:
+            log.info("export_disabled", extra={"hint": "write the readable copy by hand: buybutler export"})
         yield
+        exporter.stop()
         lookup_client.close()
         log.info("shutting down")
 
     app = FastAPI(title="Buybutler", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
     app.state.settings = settings
+    app.state.exporter = exporter
     # Added before the guard, so the guard runs first and adds its headers
     # to the 413 as well.
     app.add_middleware(BodyLimit, limit=BODY_MAX)
@@ -746,6 +753,10 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
     def conn_dep() -> Iterator[sqlite3.Connection]:
         with db.session(settings.database) as conn:
             yield conn
+            changed = conn.total_changes
+        if changed:
+            # Committed; the exporter looks whether it was content.
+            exporter.notify()
 
     # scope="function": the transaction is committed before the response
     # goes out. With the default request scope the commit runs after it, and
@@ -1493,6 +1504,7 @@ def create_app(settings: config.Settings | None = None, transport: httpx.BaseTra
                     (name, db.now(), product_id),
                 ).rowcount == 1
             if kept:
+                exporter.notify()
                 log.info("product_image_downloaded", extra={"product_id": product_id, "bytes": len(data)})
         finally:
             if not kept:

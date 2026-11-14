@@ -83,6 +83,11 @@ class Settings:
     currency: str
     # Empty when unset; passkeys are then off, TOTP works without it.
     public_url: str = ""
+    # The readable copy under export/: written on its own, this long after
+    # the first change, and deleted records kept in trash/ for some days.
+    export: bool = True
+    export_seconds: int = 60
+    trash_days: int = 30
 
     @property
     def passkey_rp_id(self) -> str:
@@ -100,6 +105,14 @@ class Settings:
     @property
     def backups(self) -> Path:
         return self.data_dir / "backups"
+
+    @property
+    def export_dir(self) -> Path:
+        return self.data_dir / "export"
+
+    @property
+    def trash(self) -> Path:
+        return self.data_dir / "trash"
 
 
 def load() -> Settings:
@@ -127,4 +140,7 @@ def load() -> Settings:
         max_upload_mb=_int("BUYBUTLER_MAX_UPLOAD_MB", 10, 1, 100),
         currency=currency,
         public_url=_public_url(),
+        export=_bool("BUYBUTLER_EXPORT", True),
+        export_seconds=_int("BUYBUTLER_EXPORT_SECONDS", 60, 10, 86400),
+        trash_days=_int("BUYBUTLER_TRASH_DAYS", 30, 0, 3650),
     )

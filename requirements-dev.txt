@@ -1,5 +1,7 @@
 -r requirements.txt
 pytest==9.2.0
+# The tests read the readable copy back; the app writes it without a library.
+PyYAML==6.0.3
 # starlette's TestClient wants httpx2; with plain httpx it warns that
 # support is going away.
 httpx2==2.16.0

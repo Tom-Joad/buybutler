@@ -35,7 +35,7 @@ wait_healthy() {
 start() {
     docker rm -f "$NAME" >/dev/null 2>&1 || true
     docker run -d --name "$NAME" -e PUID="$PUID" -e PGID="$PGID" -e TZ=Europe/Berlin \
-        -e BUYBUTLER_OFF_LOOKUP=false -v "$WORK/config:/config" "$IMAGE" >/dev/null
+        -e BUYBUTLER_OFF_LOOKUP=false -e BUYBUTLER_EXPORT_SECONDS=10 -v "$WORK/config:/config" "$IMAGE" >/dev/null
     wait_healthy
 }
 
@@ -76,6 +76,7 @@ EOF
 status_of() { head -n1 <<<"$1"; }
 
 for bad in "BUYBUTLER_PORT=eighty" "BUYBUTLER_OFF_LOOKUP=maybe" "BUYBUTLER_SESSION_DAYS=0" "BUYBUTLER_CURRENCY=EURO" \
+           "BUYBUTLER_EXPORT=sometimes" "BUYBUTLER_EXPORT_SECONDS=5" "BUYBUTLER_TRASH_DAYS=many" \
            "BUYBUTLER_PUBLIC_URL=http://buybutler.example.com"; do
     echo "== $bad stops the container"
     docker rm -f "$NAME" >/dev/null 2>&1 || true
@@ -163,6 +164,17 @@ BACKUP=$(find "$WORK/config/backups" -name 'buybutler-*.sqlite3' | head -n1)
 [[ -n $BACKUP ]] || fail "no backup file"
 [[ $(stat -c %u "$BACKUP") == "$PUID" ]] || fail "backup not owned by PUID"
 
+echo "== the readable copy"
+OUT=$(docker exec "$NAME" buybutler export) || fail "export failed"
+grep -q "Readable copy in /config/export" <<<"$OUT" || fail "export: $OUT"
+COPY=$WORK/config/export/1-home/products/1-smoke-bread/product.md
+[[ -f $COPY ]] || fail "no product.md in the readable copy"
+grep -q '^barcode: "4000000000001"$' "$COPY" || fail "barcode not in the copy"
+grep -q 'reason: "Too dry"' "$COPY" || fail "rating not in the copy"
+grep -q 'amount: 2.49, quantity: 500, unit: "g", offer: true' "$COPY" || fail "price not in the copy"
+[[ -f $WORK/config/export/FORMAT.md && -f $WORK/config/export/1-home/list.md ]] || fail "FORMAT.md or list.md missing"
+[[ -z $(find "$WORK/config/export" ! -user "$PUID" -print -quit) ]] || fail "readable copy not owned by PUID"
+
 echo "== restart and re-create keep the data"
 docker restart "$NAME" >/dev/null
 wait_healthy
@@ -188,6 +200,25 @@ R=$(http POST /api/session "{\"username\":\"smoke\",\"password\":\"$PASSWORD\"}"
 [[ $(status_of "$R") == 200 ]] || fail "login failed after the PUID change"
 R=$(http POST /api/products '{"name":"After the PUID change"}')
 [[ $(status_of "$R") == 201 ]] || fail "no write after the PUID change: $R"
+
+echo "== the copy is written on its own, as the new PUID"
+COPY=$WORK/config/export/1-home/products/2-after-the-puid-change/product.md
+for _ in $(seq 1 30); do [[ -f $COPY ]] && break; sleep 1; done
+[[ -f $COPY ]] || fail "the readable copy was not written within 30 s of a change"
+[[ $(stat -c %u "$COPY") == "$PUID" ]] || fail "readable copy not owned by the new PUID"
+in_log '"event":"export_written"' || fail "no export line in the log"
+if in_log 'After the PUID change'; then fail "product name in the log"; fi
+
+echo "== a deleted product goes to the trash, the export can be switched off"
+R=$(http DELETE /api/products/2); [[ $(status_of "$R") == 204 ]] || fail "product not deleted: $R"
+for _ in $(seq 1 30); do [[ ! -e $COPY ]] && break; sleep 1; done
+[[ ! -e $COPY ]] || fail "deleted product still in the readable copy"
+[[ -n $(find "$WORK/config/trash" -maxdepth 1 -name '2-after-the-puid-change-*' -print -quit) ]] || fail "deleted product not in the trash"
+docker rm -f "$NAME" >/dev/null
+docker run -d --name "$NAME" -e PUID="$PUID" -e PGID="$PGID" -e BUYBUTLER_OFF_LOOKUP=false -e BUYBUTLER_EXPORT=false \
+    -v "$WORK/config:/config" "$IMAGE" >/dev/null
+wait_healthy
+in_log '"event":"export_disabled"' || fail "no line saying the export is off"
 
 echo "== ordered stop"
 docker stop -t 20 "$NAME" >/dev/null

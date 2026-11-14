@@ -13,7 +13,8 @@ services:
       UMASK: ${UMASK:-022}
       TZ: ${TZ:-Etc/UTC}
     volumes:
-      # The database, pictures and backups. Back this folder up.
+      # The database, pictures, backups and the readable copy. Back this
+      # folder up.
       - ./config:/config
     ports:
       # Put a reverse proxy with HTTPS in front: the camera in the browser
