@@ -6,6 +6,28 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Added
+- A readable copy of your data. Next to the database, Buybutler now writes
+  every list and every product, with its ratings and prices, as a text file
+  (Markdown with a YAML header) to `/config/export/`, so the data can be read
+  without Buybutler. `FORMAT.md` in that folder describes the files. The
+  copy is for reading: Buybutler never reads it back.
+  - It is written on its own a minute after a change
+    (`BUYBUTLER_EXPORT_SECONDS`), and only the files of what changed. The
+    first start after the update writes everything once.
+  - The folder of a deleted product or list moves to `/config/trash/` and is
+    removed after 30 days (`BUYBUTLER_TRASH_DAYS`, `0` keeps it).
+  - `BUYBUTLER_EXPORT=false` switches the automatic writing off; the new
+    command `buybutler export` writes the copy by hand.
+  - `buybutler backup` brings the copy up to date as well.
+
+### Changed
+- The database gets a new schema version (9). Versions before this one no
+  longer start on a database this version has opened; to be able to go back,
+  run `buybutler backup` before the update and keep the file.
+
 ## [1.3.3] - 2026-11-13
 
 ### Changed

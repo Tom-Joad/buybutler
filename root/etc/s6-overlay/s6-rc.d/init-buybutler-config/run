@@ -18,6 +18,15 @@ check_int() { # name value min max
 [[ -z ${BUYBUTLER_SESSION_DAYS} ]] || check_int BUYBUTLER_SESSION_DAYS "${BUYBUTLER_SESSION_DAYS}" 1 3650
 [[ -z ${BUYBUTLER_MAX_UPLOAD_MB} ]] || check_int BUYBUTLER_MAX_UPLOAD_MB "${BUYBUTLER_MAX_UPLOAD_MB}" 1 100
 
+[[ -z ${BUYBUTLER_EXPORT_SECONDS} ]] || check_int BUYBUTLER_EXPORT_SECONDS "${BUYBUTLER_EXPORT_SECONDS}" 10 86400
+[[ -z ${BUYBUTLER_TRASH_DAYS} ]] || check_int BUYBUTLER_TRASH_DAYS "${BUYBUTLER_TRASH_DAYS}" 0 3650
+
+# shellcheck disable=SC2153  # not a misspelt BUYBUTLER_PORT
+case "${BUYBUTLER_EXPORT,,}" in
+    "" | true | false | 1 | 0 | yes | no | on | off) ;;
+    *) fail "BUYBUTLER_EXPORT must be true or false, got '${BUYBUTLER_EXPORT}'" ;;
+esac
+
 case "${BUYBUTLER_OFF_LOOKUP,,}" in
     "" | true | false | 1 | 0 | yes | no | on | off) ;;
     *) fail "BUYBUTLER_OFF_LOOKUP must be true or false, got '${BUYBUTLER_OFF_LOOKUP}'" ;;
@@ -42,11 +51,12 @@ case "${BUYBUTLER_LOG_LEVEL^^}" in
     *) fail "BUYBUTLER_LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR, got '${BUYBUTLER_LOG_LEVEL}'" ;;
 esac
 
-# /config holds the database, the pictures and backups.
-mkdir -p /config/images /config/backups
+# /config holds the database, the pictures, backups, the readable copy and
+# its trash.
+mkdir -p /config/images /config/backups /config/export /config/trash
 
 if [[ -z ${LSIO_NON_ROOT_USER} ]]; then
-    lsiown abc:abc /config /config/images /config/backups
+    lsiown abc:abc /config /config/images /config/backups /config/export /config/trash
     # Anything not owned by abc is handed over: files written as root (a
     # `docker exec` without the wrapper), or by an earlier PUID/PGID after
     # the IDs were changed or /config was restored elsewhere. Normally there

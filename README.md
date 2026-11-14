@@ -40,6 +40,10 @@ sweet"); the newest rating is the verdict.
 The interface is in German, English, French, Italian, Dutch, Polish,
 Portuguese, Spanish and Turkish, see [Languages](#languages).
 
+Your data stays readable without Buybutler: next to its database it keeps
+every list, product, rating and price as a plain text file, see
+[A readable copy of your data](#a-readable-copy-of-your-data).
+
 The container is built on linuxserver.io's Alpine image with its conventions
 (`PUID`, `PGID`, `UMASK`, `TZ`, `/config`).
 
@@ -135,11 +139,14 @@ except scanning; type the barcode instead.
 | `-e BUYBUTLER_OFF_LOOKUP` | `true` | `false` never sends barcodes to Open Food Facts; products are entered by hand |
 | `-e BUYBUTLER_SESSION_DAYS` | `90` | Days a login stays valid without being used (1 to 3650) |
 | `-e BUYBUTLER_MAX_UPLOAD_MB` | `10` | Largest accepted picture (1 to 100); the browser shrinks photos before sending |
+| `-e BUYBUTLER_EXPORT` | `true` | Write the [readable copy](#a-readable-copy-of-your-data) on its own. `false`: only the command `buybutler export` writes it |
+| `-e BUYBUTLER_EXPORT_SECONDS` | `60` | Seconds after a change until the readable copy is written (10 to 86400); changes in that time are written together |
+| `-e BUYBUTLER_TRASH_DAYS` | `30` | Days the folder of a deleted product or list stays in `/config/trash/` (0 to 3650); `0` keeps it |
 | `-e BUYBUTLER_PUBLIC_URL` | -- | The address Buybutler is opened at, such as `https://buybutler.example.com`. Needed for passkeys, which are bound to this host name; HTTPS and a host name (no IP address). Without it, passkeys are off and the authenticator app still works |
 | `-e BUYBUTLER_TRUSTED_PROXIES` | `*` | Addresses whose `X-Forwarded-*` headers are trusted. Set it to the reverse proxy's address (comma-separated list); with `*`, the client address in the log and the per-address login limit can be forged, see [Security](#security) |
 | `-e BUYBUTLER_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 | `-e BUYBUTLER_PORT` | `8080` | Port inside the container |
-| `-v /config` | -- | Database, pictures, backups |
+| `-v /config` | -- | Database, pictures, backups, the readable copy |
 
 A malformed setting stops the container with an `ERROR:` line in the log.
 
@@ -151,6 +158,8 @@ A malformed setting stops the container with an `ERROR:` line in the log.
 | `/config/images/products/` | Product pictures (from Open Food Facts, or your own) |
 | `/config/images/ratings/` | Photos attached to ratings |
 | `/config/backups/` | Copies written by `buybutler backup` |
+| `/config/export/` | The readable copy: one text file per list and product, and `FORMAT.md`, which describes them |
+| `/config/trash/` | Folders of deleted products and lists from the readable copy |
 
 ## Commands
 
@@ -164,7 +173,8 @@ container's user, so files keep the `PUID`/`PGID` owner.
 | `user list` | List users with role, `2fa` or `password`, and creation time |
 | `user reset-2fa <NAME>` | Remove a user's authenticator app, passkeys and recovery codes, for a lost phone; the password alone logs in again |
 | `user delete <NAME>` | Delete a user. Lists only they use are deleted with them; a shared list they alone own needs another owner first. Their ratings elsewhere stay, without a name |
-| `backup` | Write a consistent copy of the database to `/config/backups/` |
+| `backup` | Write a consistent copy of the database to `/config/backups/`, and bring the readable copy up to date |
+| `export` | Write the readable copy now and put right every file in it that differs from the database |
 
 The same is possible in the interface under **Account → Users**, for admins.
 Every change there asks for the admin's own password, so a stolen admin
@@ -350,12 +360,51 @@ a copy of `en.json` and its code in `auth.LANGUAGES` and `LANGUAGES` in
 `app.js`. `tests/test_i18n.py` checks that every file has every text with
 the same placeholders.
 
+## A readable copy of your data
+
+Buybutler works on its database. So that what you collected can be read in
+twenty years without Buybutler, it also writes every list and every product,
+with its ratings and prices, as a text file:
+
+```
+/config/export/
+  FORMAT.md                     describes the files
+  1-home/
+    list.md                     the list and its members
+    products/
+      412-natural-yoghurt/
+        product.md              the product, its ratings and prices
+```
+
+A file is Markdown with a YAML header, readable in any text editor. The
+format is described in [buybutler/FORMAT.md](buybutler/FORMAT.md); Buybutler
+keeps a copy of that description in the folder. Pictures are not copied, the
+files name their place under `/config/images/`.
+
+- **It is a copy for reading.** Buybutler never reads it back. A file
+  changed by hand changes nothing in Buybutler and is overwritten when its
+  product changes next.
+- It is written on its own, `BUYBUTLER_EXPORT_SECONDS` (a minute) after a
+  change, and only the files of what changed. Ticking off the shopping list
+  or logging in writes nothing, and nothing is written while nothing
+  changes.
+- When a product or a list is deleted, its folder moves to `/config/trash/`
+  with the date and time in its name, and is removed after
+  `BUYBUTLER_TRASH_DAYS`. It is there to look something up; Buybutler can't
+  take it back, and the pictures are deleted at once.
+- `BUYBUTLER_EXPORT=false` switches the automatic writing off. The folder
+  then stays as it is; `buybutler export` brings it up to date by hand, and
+  so does switching it on again.
+- The shopping list, logins, passwords and access keys are not in the copy.
+
 ## Backups
 
-Back up the whole `/config` folder. The database runs in WAL mode: a plain
-file copy while the container runs can miss the last changes. Either stop the
-container for the copy, or run `buybutler backup` first and keep the file
-from `/config/backups/`. Delete old backups yourself; Buybutler doesn't.
+Back up the whole `/config` folder. What counts is the database; the
+readable copy can't be loaded back into Buybutler. The database runs in WAL
+mode: a plain file copy while the container runs can miss the last changes.
+Either stop the container for the copy, or run `buybutler backup` first and
+keep the file from `/config/backups/`. Delete old backups yourself; Buybutler
+doesn't.
 
 ## Privacy
 
@@ -470,9 +519,12 @@ works without it, except for the camera.
 | `buybutler/shopping.py` | Shopping list and the remembered order per store |
 | `buybutler/off.py` | Open Food Facts client and cache |
 | `buybutler/images.py` | Stored pictures |
+| `buybutler/export.py` | The readable copy: what changed is written as text files in the background |
+| `buybutler/files.py` | Writing those files: whole or not at all, flushed once per run |
+| `buybutler/FORMAT.md` | The format of the readable copy, also copied into `/config/export/` |
 | `buybutler/config.py` | Settings from the environment, checked at start |
 | `buybutler/logging_setup.py` | JSON log lines |
-| `buybutler/__main__.py` | The `buybutler` command: `run`, `user …`, `backup` |
+| `buybutler/__main__.py` | The `buybutler` command: `run`, `user …`, `backup`, `export` |
 | `buybutler/static/` | Interface without a build step, stylesheets, fonts, icons |
 | `buybutler/static/i18n/` | The interface's texts, one file per language |
 | `buybutler/sw.js` | Service worker: the app shell and pictures for offline use |

@@ -55,6 +55,16 @@ places of keys not shown. A new product scanned on the shopping list goes
 on it in the same outbox job (`fill: { product_id: "product" }` names the
 product step's ID in the body), so it also works offline.
 
+**The readable copy is written from the database, never read.**
+`export.py` writes lists, products, ratings and prices as files under
+`/config/export/` (`FORMAT.md`), in a background thread, a while after a
+change. Triggers (migration 9) raise `export_rev` on the product or list in
+the transaction of the change; a new table with content needs its own
+triggers and a line in `tests/test_export.py`. Files are flushed once per
+run, and only then is `exported_rev` set. What changes all the time
+(shopping list, sessions) is not exported. A changed file layout or field is
+a new format version in `FORMAT.md`.
+
 ## Conventions
 
 * Everything in the repository is in English.

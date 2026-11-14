@@ -1,4 +1,4 @@
-"""Command line: the web server and the user and backup commands.
+"""Command line: the web server and the user, backup and export commands.
 
 In the container: `docker exec -it buybutler buybutler user add <name>`.
 """
@@ -11,7 +11,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, auth, config, db, lists, twofactor
+from . import __version__, auth, config, db, export, lists, twofactor
 
 
 def _password(args: argparse.Namespace) -> str:
@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("backup", help="write a consistent copy of the database to /config/backups")
     p.add_argument("--output", help="target file instead of the backups folder")
+
+    sub.add_parser("export", help="write the readable copy of all lists and products to /config/export now")
 
     args = parser.parse_args(argv)
 
@@ -106,6 +108,16 @@ def main(argv: list[str] | None = None) -> int:
             target = Path(args.output) if args.output else settings.backups / f"buybutler-{stamp}.sqlite3"
             db.backup(settings.database, target)
             print(f"Database written to {target}. Pictures are in {settings.images}.")
+            if settings.export:
+                # So a copy of /config taken now has the readable files of
+                # what the database holds.
+                export.Export(settings).run()
+        elif args.command == "export":
+            copy = export.Export(settings)
+            copy.prepare()
+            done = copy.run(everything=True)
+            print(f"Readable copy in {settings.export_dir}: {done['products']} products and {done['lists']} lists"
+                  f" written, {done['removed']} deleted ones moved to {settings.trash}; the rest was up to date.")
     except auth.AuthError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

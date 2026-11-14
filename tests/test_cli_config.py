@@ -74,6 +74,9 @@ def test_backup(data, monkeypatch, capsys):
         ("BUYBUTLER_MAX_UPLOAD_MB", "1000"),
         ("BUYBUTLER_CURRENCY", "EURO"),
         ("BUYBUTLER_CURRENCY", "€"),
+        ("BUYBUTLER_EXPORT", "sometimes"),
+        ("BUYBUTLER_EXPORT_SECONDS", "5"),
+        ("BUYBUTLER_TRASH_DAYS", "-1"),
     ],
 )
 def test_bad_settings(monkeypatch, name, value):
@@ -83,11 +86,14 @@ def test_bad_settings(monkeypatch, name, value):
 
 
 def test_defaults(monkeypatch):
-    for name in ("BUYBUTLER_PORT", "BUYBUTLER_OFF_LOOKUP", "BUYBUTLER_DATA_DIR", "BUYBUTLER_OFF_LANGUAGE"):
+    for name in ("BUYBUTLER_PORT", "BUYBUTLER_OFF_LOOKUP", "BUYBUTLER_DATA_DIR", "BUYBUTLER_OFF_LANGUAGE",
+                 "BUYBUTLER_EXPORT", "BUYBUTLER_EXPORT_SECONDS", "BUYBUTLER_TRASH_DAYS"):
         monkeypatch.delenv(name, raising=False)
     s = config.load()
     assert s.port == 8080 and s.off_lookup is True and s.off_language == "en"
     assert str(s.database) == "/config/buybutler.sqlite3"
+    assert (s.export, s.export_seconds, s.trash_days) == (True, 60, 30)
+    assert (str(s.export_dir), str(s.trash)) == ("/config/export", "/config/trash")
 
 
 # ---- login throttle --------------------------------------------------------

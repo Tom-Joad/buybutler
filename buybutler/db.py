@@ -252,6 +252,87 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX api_tokens_user ON api_tokens(user_id);
     """,
+    # 9: the readable copy under /config/export (export.py). export_rev counts
+    # the changes to a product (with its ratings and prices) or a list (with
+    # its members), exported_rev is the count the files on disk show; new
+    # rows start at 1 > 0, so they and everything from before are written
+    # once. Triggers count in the transaction of the change, so no write
+    # path can forget it; they also fire for ON DELETE CASCADE and SET NULL.
+    # export_gone names what was deleted, for the exporter to move away.
+    """
+    ALTER TABLE products ADD COLUMN export_rev INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE products ADD COLUMN exported_rev INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE lists ADD COLUMN export_rev INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE lists ADD COLUMN exported_rev INTEGER NOT NULL DEFAULT 0;
+
+    CREATE TABLE export_gone (
+        id          INTEGER PRIMARY KEY,
+        kind        TEXT NOT NULL CHECK (kind IN ('list', 'product')),
+        record_id   INTEGER NOT NULL,
+        created_at  TEXT NOT NULL
+    );
+
+    CREATE TRIGGER export_products_update AFTER UPDATE ON products
+    WHEN NEW.export_rev = OLD.export_rev AND NEW.exported_rev = OLD.exported_rev
+    BEGIN
+        UPDATE products SET export_rev = export_rev + 1 WHERE id = NEW.id;
+    END;
+    CREATE TRIGGER export_products_delete AFTER DELETE ON products
+    BEGIN
+        INSERT INTO export_gone (kind, record_id, created_at)
+            VALUES ('product', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+
+    CREATE TRIGGER export_ratings_insert AFTER INSERT ON ratings
+    BEGIN
+        UPDATE products SET export_rev = export_rev + 1 WHERE id = NEW.product_id;
+    END;
+    CREATE TRIGGER export_ratings_update AFTER UPDATE ON ratings
+    BEGIN
+        UPDATE products SET export_rev = export_rev + 1 WHERE id = NEW.product_id;
+    END;
+    CREATE TRIGGER export_ratings_delete AFTER DELETE ON ratings
+    BEGIN
+        UPDATE products SET export_rev = export_rev + 1 WHERE id = OLD.product_id;
+    END;
+
+    CREATE TRIGGER export_prices_insert AFTER INSERT ON prices
+    BEGIN
+        UPDATE products SET export_rev = export_rev + 1 WHERE id = NEW.product_id;
+    END;
+    CREATE TRIGGER export_prices_update AFTER UPDATE ON prices
+    BEGIN
+        UPDATE products SET export_rev = export_rev + 1 WHERE id = NEW.product_id;
+    END;
+    CREATE TRIGGER export_prices_delete AFTER DELETE ON prices
+    BEGIN
+        UPDATE products SET export_rev = export_rev + 1 WHERE id = OLD.product_id;
+    END;
+
+    CREATE TRIGGER export_lists_update AFTER UPDATE ON lists
+    WHEN NEW.export_rev = OLD.export_rev AND NEW.exported_rev = OLD.exported_rev
+    BEGIN
+        UPDATE lists SET export_rev = export_rev + 1 WHERE id = NEW.id;
+    END;
+    CREATE TRIGGER export_lists_delete AFTER DELETE ON lists
+    BEGIN
+        INSERT INTO export_gone (kind, record_id, created_at)
+            VALUES ('list', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+    END;
+
+    CREATE TRIGGER export_members_insert AFTER INSERT ON list_members
+    BEGIN
+        UPDATE lists SET export_rev = export_rev + 1 WHERE id = NEW.list_id;
+    END;
+    CREATE TRIGGER export_members_update AFTER UPDATE ON list_members
+    BEGIN
+        UPDATE lists SET export_rev = export_rev + 1 WHERE id = NEW.list_id;
+    END;
+    CREATE TRIGGER export_members_delete AFTER DELETE ON list_members
+    BEGIN
+        UPDATE lists SET export_rev = export_rev + 1 WHERE id = OLD.list_id;
+    END;
+    """,
 ]
 
 
