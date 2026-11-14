@@ -373,6 +373,7 @@
   "users.reset_2fa_confirm": "Authenticator-App, Passkeys und Wiederherstellungscodes von {name} entfernen? Dann meldet das Passwort allein wieder an.",
   "users.reset_2fa_done": "Zwei-Faktor-Anmeldung von {name} entfernt.",
   "users.delete_confirm": "{name} löschen? Listen, die nur dieser Benutzer verwendet, werden mitgelöscht.",
+  "users.delete_keep_name": "Soll der Name {name} an den Bewertungen und Preisen in geteilten Listen stehen bleiben?\n\nOK: Name behalten\nAbbrechen: Name entfernen",
   "users.two_factor": "Zwei-Faktor",
   "users.created": "angelegt {time}",
 

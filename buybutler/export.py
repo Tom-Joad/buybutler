@@ -254,18 +254,21 @@ class Export:
     def _render(self, conn: sqlite3.Connection, ids: list[int]) -> list[tuple[sqlite3.Row, str]]:
         marks = ",".join("?" * len(ids))
         products = conn.execute(
-            "SELECT p.*, l.name AS list_name, u.username FROM products p JOIN lists l ON l.id = p.list_id"
+            "SELECT p.*, l.name AS list_name, COALESCE(u.username, NULLIF(p.created_by_name, '')) AS username"
+            " FROM products p JOIN lists l ON l.id = p.list_id"
             f" LEFT JOIN users u ON u.id = p.created_by WHERE p.id IN ({marks}) ORDER BY p.id", ids
         ).fetchall()
         ratings: dict[int, list[sqlite3.Row]] = {}
         for r in conn.execute(
-            "SELECT r.*, u.username FROM ratings r LEFT JOIN users u ON u.id = r.user_id"
+            "SELECT r.*, COALESCE(u.username, NULLIF(r.user_name, '')) AS username"
+            " FROM ratings r LEFT JOIN users u ON u.id = r.user_id"
             f" WHERE r.product_id IN ({marks}) ORDER BY r.rated_on, r.created_at, r.id", ids
         ):
             ratings.setdefault(r["product_id"], []).append(r)
         prices: dict[int, list[sqlite3.Row]] = {}
         for p in conn.execute(
-            "SELECT pr.*, u.username FROM prices pr LEFT JOIN users u ON u.id = pr.user_id"
+            "SELECT pr.*, COALESCE(u.username, NULLIF(pr.user_name, '')) AS username"
+            " FROM prices pr LEFT JOIN users u ON u.id = pr.user_id"
             f" WHERE pr.product_id IN ({marks}) ORDER BY pr.bought_on, pr.created_at, pr.id", ids
         ):
             prices.setdefault(p["product_id"], []).append(p)

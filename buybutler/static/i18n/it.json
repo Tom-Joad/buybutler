@@ -373,6 +373,7 @@
   "users.reset_2fa_confirm": "Rimuovere l'app di autenticazione, le passkey e i codici di recupero di {name}? Basterà di nuovo la sua password.",
   "users.reset_2fa_done": "Accesso a due fattori di {name} rimosso.",
   "users.delete_confirm": "Eliminare {name}? Vengono eliminate anche le liste che usa solo questo utente.",
+  "users.delete_keep_name": "Il nome {name} deve restare sulle sue valutazioni e sui suoi prezzi nelle liste condivise?\n\nOK: mantieni il nome\nAnnulla: rimuovi il nome",
   "users.two_factor": "due fattori",
   "users.created": "creato {time}",
 

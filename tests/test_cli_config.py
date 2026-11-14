@@ -62,6 +62,41 @@ def test_backup(data, monkeypatch, capsys):
     conn.close()
 
 
+def test_user_delete_keeps_or_clears_the_name(data, monkeypatch, capsys):
+    run(monkeypatch, ["user", "add", "tj", "--password-stdin"], "a long password\n")
+    settings = config.load()
+
+    def user_with_a_rating(name: str) -> None:
+        run(monkeypatch, ["user", "add", name, "--password-stdin"], "another password\n")
+        with db.session(settings.database) as conn:
+            uid = conn.execute("SELECT id FROM users WHERE username = ?", (name,)).fetchone()[0]
+            now = db.now()
+            conn.execute("INSERT INTO list_members VALUES (1, ?, 'editor', ?, ?)", (uid, now, now))
+            pid = conn.execute("INSERT INTO products (list_id, name, created_by, created_at, updated_at)"
+                               " VALUES (1, ?, ?, ?, ?)", (name, uid, now, now)).lastrowid
+            conn.execute("INSERT INTO ratings (product_id, user_id, buy_again, rated_on, created_at, updated_at)"
+                         " VALUES (?, ?, 1, '2026-01-01', ?, ?)", (pid, uid, now, now))
+
+    def names() -> list[tuple]:
+        with db.session(settings.database) as conn:
+            return [tuple(r) for r in conn.execute(
+                "SELECT p.name, p.created_by_name, r.user_name FROM products p JOIN ratings r ON r.product_id = p.id"
+                " ORDER BY p.id")]
+
+    for name in ("kept", "cleared", "script"):
+        user_with_a_rating(name)
+    capsys.readouterr()
+    assert run(monkeypatch, ["user", "delete", "kept", "--keep-name"]) == 0
+    assert "name was kept" in capsys.readouterr().out
+    assert run(monkeypatch, ["user", "delete", "cleared", "--clear-name"]) == 0
+    # Without a terminal nobody can be asked: as before, the name goes.
+    assert run(monkeypatch, ["user", "delete", "script"]) == 0
+    assert "name was removed" in capsys.readouterr().out
+    assert names() == [("kept", "kept", "kept"), ("cleared", "", ""), ("script", "", "")]
+    with pytest.raises(SystemExit):
+        run(monkeypatch, ["user", "delete", "tj", "--keep-name", "--clear-name"])
+
+
 @pytest.mark.parametrize(
     "name,value",
     [

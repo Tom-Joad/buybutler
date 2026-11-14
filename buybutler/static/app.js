@@ -1376,7 +1376,9 @@ function renderUsers(users) {
           try {
             adminPassword();
             if (!confirm(t("users.delete_confirm", { name: u.username }))) return;
-            await adminChange("DELETE", `/api/users/${u.id}`, {});
+            // OK keeps the name, Cancel removes it; the user is deleted either way.
+            const keepName = confirm(t("users.delete_keep_name", { name: u.username }));
+            await adminChange("DELETE", `/api/users/${u.id}`, { keep_name: keepName });
             await loadUsers();
           } catch (err) {
             showError($("#u-message"), err);

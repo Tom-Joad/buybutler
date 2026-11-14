@@ -52,6 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("name")
     p = users.add_parser("delete", help="delete a user; lists only they use go too, their ratings elsewhere stay")
     p.add_argument("name")
+    keep = p.add_mutually_exclusive_group()
+    keep.add_argument("--keep-name", action="store_true", help="their name stays on those ratings and prices")
+    keep.add_argument("--clear-name", action="store_true", help="those ratings and prices lose the name")
 
     p = sub.add_parser("backup", help="write a consistent copy of the database to /config/backups")
     p.add_argument("--output", help="target file instead of the backups folder")
@@ -96,13 +99,21 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"Two-factor login of {row['username']} removed; the password alone logs in again.")
                 elif args.action == "delete":
                     row = _user(conn, args.name)
+                    keep_name = args.keep_name
+                    if not (args.keep_name or args.clear_name):
+                        # Asked at a terminal; a script gets what it got
+                        # before the question existed.
+                        keep_name = sys.stdin.isatty() and input(
+                            f"Keep the name {row['username']} on their ratings and prices in lists that stay? [y/N] "
+                        ).strip().lower() in ("y", "yes")
                     try:
-                        files = lists.delete_user(conn, row["id"])
+                        files = lists.delete_user(conn, row["id"], keep_name)
                     except lists.ListError as exc:
                         raise auth.AuthError(str(exc)) from None
                     conn.commit()
                     lists.remove_files(settings.images, files)
-                    print(f"Deleted {row['username']}.")
+                    print(f"Deleted {row['username']}; their name was {'kept' if keep_name else 'removed'}"
+                          " on ratings and prices in lists that stay.")
         elif args.command == "backup":
             stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
             target = Path(args.output) if args.output else settings.backups / f"buybutler-{stamp}.sqlite3"

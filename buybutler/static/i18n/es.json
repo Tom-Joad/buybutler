@@ -373,6 +373,7 @@
   "users.reset_2fa_confirm": "¿Quitar la app de autenticación, las llaves de acceso y los códigos de recuperación de {name}? Volverá a bastar con su contraseña.",
   "users.reset_2fa_done": "Inicio de sesión en dos pasos de {name} quitado.",
   "users.delete_confirm": "¿Eliminar a {name}? También se eliminan las listas que solo usa este usuario.",
+  "users.delete_keep_name": "¿Debe conservarse el nombre {name} en sus valoraciones y precios de las listas compartidas?\n\nAceptar: conservar el nombre\nCancelar: quitar el nombre",
   "users.two_factor": "dos pasos",
   "users.created": "creado {time}",
 
