@@ -84,6 +84,8 @@ a new format version in `FORMAT.md`.
   * The authenticator secret and the recovery codes are set in the
     system monospace font, a third family, so similar characters stay
     apart.
+  * Below 480px the bar's wordmark and nav go under their text styles
+    (21/18px, nav 11px) so all four entries fit down to 320px.
 * User text is inserted with `textContent`, never `innerHTML`.
 * Every text of the interface comes from `static/i18n/<language>.json`:
   `t("key")` in `app.js`, `data-i18n` (and `-placeholder`, `-aria-label`,

@@ -6,6 +6,20 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [Unreleased]
+
+### Changed
+- The products view is headed **Products**, like its tab (it said
+  "Lists", the name of another view), in every language.
+- Edit, remove and the other small actions beside an entry look the same
+  everywhere: tracked caps, underlined (the shopping list used a smaller,
+  mixed-case link).
+- Text uses the design's text styles and their narrow-screen steps instead
+  of fixed sizes: body text is a little larger on wide screens, page and
+  section titles and the latest price follow their styles. A row being
+  dragged in the shopping list is marked by an edge instead of a shadow
+  (#119).
+
 ## [1.4.0] - 2026-11-14
 
 ### Added

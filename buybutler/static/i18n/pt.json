@@ -194,7 +194,7 @@
   "price.for_quantity": "por {quantity} {unit}",
   "price.per": "{price} por {unit}",
 
-  "products.title": "Listas",
+  "products.title": "Produtos",
   "products.tab_buy": "Voltar a comprar",
   "products.tab_skip": "Não comprar",
   "products.tab_all": "Todos",
