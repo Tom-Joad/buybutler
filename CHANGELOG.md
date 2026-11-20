@@ -6,6 +6,18 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
+## [1.4.3] - 2026-11-20
+
+### Changed
+- Updated dependencies:
+  - annotated-doc from 0.0.5 to 0.0.6
+  - fastapi from 0.162.2 to 0.163.1
+  - playwright from 1.65.1 to 1.65.2
+  - httpx2 from 2.16.0 to 2.16.2
+  - node from 24-alpine to 26-alpine
+  - cbor2 from 6.2.1 to 6.3.0
+  - zxing-wasm from 3.1.6 to 3.1.7
+
 ## [1.4.2] - 2026-11-19
 
 ### Security
@@ -472,6 +484,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.4.3]: https://github.com/Tom-Joad/buybutler/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/Tom-Joad/buybutler/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/Tom-Joad/buybutler/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Tom-Joad/buybutler/compare/v1.3.3...v1.4.0
