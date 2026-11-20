@@ -6,7 +6,7 @@ webauthn==3.0.1
 
 # What those pull in, pinned as well, so every build installs the same
 # versions and updates arrive as Dependabot pull requests like the rest.
-annotated-doc==0.0.5  # via fastapi
+annotated-doc==0.0.6  # via fastapi
 annotated-types==0.8.0  # via pydantic
 anyio==4.16.0  # via httpx, starlette
 cbor2==6.3.0  # via webauthn
