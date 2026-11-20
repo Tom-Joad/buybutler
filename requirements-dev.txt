@@ -4,7 +4,7 @@ pytest==9.2.0
 PyYAML==6.0.3
 # starlette's TestClient wants httpx2; with plain httpx it warns that
 # support is going away.
-httpx2==2.16.0
+httpx2==2.16.2
 # The outbox tests run the interface in Chromium
 # (python -m playwright install chromium).
 playwright==1.65.1
