@@ -3,7 +3,7 @@
 # The files are the same for every architecture, so the stage runs once, on
 # the build machine's own platform, instead of under emulation for arm64.
 # Pinned by digest (a multi-arch index); Dependabot proposes new digests.
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS vendor
+FROM --platform=$BUILDPLATFORM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS vendor
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
