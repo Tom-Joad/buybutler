@@ -6,7 +6,7 @@ needs action when upgrading (a renamed or removed setting, a changed API for
 scripts, a different folder layout) only comes with a new major version.
 Before 1.0.0, a minor version could need action; its entry says so.
 
-## [Unreleased]
+## [1.4.4] - 2026-11-23
 
 ### Changed
 - Updated dependencies:
@@ -495,6 +495,7 @@ endpoints (`/api/users…`): they now send `admin_password`.
   `BUYBUTLER_TRUSTED_PROXIES`, `BUYBUTLER_LOG_LEVEL`, `BUYBUTLER_PORT`.
 - Installable on the phone's home screen.
 
+[1.4.4]: https://github.com/Tom-Joad/buybutler/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/Tom-Joad/buybutler/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/Tom-Joad/buybutler/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/Tom-Joad/buybutler/compare/v1.4.0...v1.4.1
